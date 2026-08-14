@@ -1,6 +1,6 @@
 (() => {
   const SCHEMA_VERSION = "0.3.0-draft";
-  const COLLECTOR_VERSION = "0.3.0";
+  const COLLECTOR_VERSION = "0.3.1";
   const QUIET_PERIOD_MS = 1500;
   const state = { measuring: false, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
 
@@ -84,7 +84,9 @@
   function chatModeEvidence() {
     const urlTemporary = new URL(location.href).searchParams.get("temporary-chat") === "true";
     const visibleLabel = visibleTemporaryLabel();
-    return { chat_mode: urlTemporary || visibleLabel ? "temporary" : "regular", evidence: { url_temporary_chat: urlTemporary, visible_label: visibleLabel, classification_source: urlTemporary && visibleLabel ? "url_and_dom" : urlTemporary ? "url" : visibleLabel ? "dom" : "url_absence" } };
+    const labelMeansActive = Boolean(visibleLabel && /(끄기|turn off|disable|종료)/i.test(visibleLabel));
+    const chatMode = urlTemporary || labelMeansActive ? "temporary" : "regular";
+    return { chat_mode: chatMode, evidence: { url_temporary_chat: urlTemporary, visible_label: visibleLabel, visible_label_semantics: labelMeansActive ? "disable_temporary_action" : visibleLabel ? "enable_temporary_action" : null, classification_source: urlTemporary && labelMeansActive ? "url_and_dom" : urlTemporary ? "url" : visibleLabel ? "dom_action" : "url_absence" } };
   }
   function uiLabelEvidence(selectors, patterns) {
     for (const selector of selectors) {
@@ -99,7 +101,7 @@
     return uiLabelEvidence(['button[data-testid="model-switcher-dropdown-button"]', '[data-testid*="model-switcher"]', 'header button[aria-haspopup="menu"]', 'header button[aria-label]'], [/gpt/i, /chatgpt/i, /모델/i, /model/i, /o\d/i]);
   }
   function displayedModeEvidence() {
-    return uiLabelEvidence(['button[data-testid*="mode"]', '[data-testid*="reasoning"]', 'form button[aria-haspopup="menu"]', 'form button[aria-label]'], [/instant/i, /thinking/i, /pro/i, /reason/i, /빠른/i, /생각/i, /추론/i]);
+    return uiLabelEvidence(['button[data-testid*="mode"]', '[data-testid*="reasoning"]', 'form button[aria-haspopup="menu"]', 'form button[aria-label]', 'form button'], [/instant/i, /thinking/i, /pro/i, /reason/i, /즉시/i, /빠른/i, /생각/i, /추론/i]);
   }
   function uiLabelCandidates() {
     return [...document.querySelectorAll('header button, header [aria-label], form button[aria-haspopup="menu"], form button[aria-label]')].slice(0, 40).map((node) => ({ text: textOf(node) || null, aria_label: node.getAttribute("aria-label"), data_testid: node.getAttribute("data-testid"), tag: node.tagName.toLowerCase() })).filter((item) => item.text || item.aria_label || item.data_testid);
@@ -128,7 +130,17 @@
       previous.signature = next.signature;
       return;
     }
-    if (previous) previous.last_seen_at = now();
+    if (previous) {
+      previous.last_seen_at = now();
+      for (const record of state.records.values()) {
+        if (record.context_id !== previous.context_id || record.role !== "assistant") continue;
+        const quietForMs = Date.now() - Date.parse(record.last_text_changed_at);
+        if (quietForMs >= QUIET_PERIOD_MS) {
+          record.completion_state = "quiet_candidate";
+          record.completion_evidence = { ...record.completion_evidence, text_quiet_for_ms: quietForMs, stop_control_visible: false, stop_control_text: null, context_closed: true };
+        }
+      }
+    }
     state.currentContext = next; state.contexts.push(next); state.baselineKeys = currentNodeKeys();
     if (previous) state.contextEvents.push({ event_id: makeId("event"), event_type: "chat_context_changed", captured_at: now(), from_context_id: previous.context_id, to_context_id: next.context_id, evidence: { reason, url_changed: previous.conversation_url !== next.conversation_url, mode_changed: previous.chat_mode !== next.chat_mode } });
   }
@@ -141,7 +153,9 @@
     if (!state.measuring) return;
     if (!state.currentContext || state.currentContext.signature !== contextSignature()) openContext("url_or_mode_changed");
     if (state.currentContext) state.currentContext.last_seen_at = now();
-    for (const [index, node] of messageNodes().entries()) {
+    const nodes = messageNodes();
+    const latestAssistant = [...nodes].reverse().find((node) => roleOf(node) === "assistant") || null;
+    for (const [index, node] of nodes.entries()) {
       const key = nodeKey(node, index); if (state.baselineKeys.has(key)) continue;
       const text = textOf(node); if (!text) continue;
       const recordKey = `${state.currentContext.context_id}:${key}`;
@@ -149,7 +163,7 @@
       const textChanged = !existing || existing.text !== text;
       const lastTextChangedAt = textChanged ? capturedAt : existing.last_text_changed_at;
       const quietForMs = Date.now() - Date.parse(lastTextChangedAt);
-      const controls = responseControls();
+      const controls = role === "assistant" && node === latestAssistant ? responseControls() : { stop_control_visible: false, stop_control_text: null };
       const citationCandidates = citationsFrom(node);
       const completionState = role !== "assistant" ? null : quietForMs >= QUIET_PERIOD_MS && !controls.stop_control_visible ? "quiet_candidate" : "streaming_or_unsettled";
       state.records.set(recordKey, { candidate_id: existing?.candidate_id || makeId("candidate"), context_id: state.currentContext.context_id, role, text, html: safeHtml(node), first_seen_at: existing?.first_seen_at || capturedAt, last_updated_at: textChanged ? capturedAt : existing.last_updated_at, last_text_changed_at: lastTextChangedAt, completion_state: completionState, completion_evidence: role === "assistant" ? { text_quiet_for_ms: quietForMs, required_quiet_period_ms: QUIET_PERIOD_MS, ...controls } : null, link_candidates: linksFrom(node), citation_candidates: citationCandidates, citation_groups: citationGroupsFrom(citationCandidates) });
