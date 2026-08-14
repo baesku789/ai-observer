@@ -1,0 +1,32 @@
+{
+  "hosts": {
+    "oganacell.com": { "ownership_type": "first_party", "source_type": "official_brand_site", "owner_entity_id": "oganacell_brand", "canonical_host": "oganacell.com" },
+    "www.oganacell.com": { "ownership_type": "first_party", "source_type": "official_brand_site", "owner_entity_id": "oganacell_brand", "canonical_host": "oganacell.com" },
+    "oganaskin.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_cheongdam", "canonical_host": "oganaskin.com" },
+    "www.oganaskin.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_cheongdam", "canonical_host": "oganaskin.com" },
+    "oganaskinddm.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_dongdaemun", "canonical_host": "oganaskinddm.com" },
+    "www.oganaskinddm.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_dongdaemun", "canonical_host": "oganaskinddm.com" },
+    "oganaskinjamsil.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_jamsil", "canonical_host": "oganaskinjamsil.com" },
+    "www.oganaskinjamsil.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_jamsil", "canonical_host": "oganaskinjamsil.com" },
+    "oganamagokworld.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_magok", "canonical_host": "oganamagokworld.com" },
+    "www.oganamagokworld.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_magok", "canonical_host": "oganamagokworld.com" },
+    "oganacell-magok.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_magok", "canonical_host": "oganacell-magok.com" },
+    "www.oganacell-magok.com": { "ownership_type": "first_party", "source_type": "official_branch_site", "owner_entity_id": "oganacell_magok", "canonical_host": "oganacell-magok.com" },
+    "derma.or.kr": { "ownership_type": "third_party", "source_type": "professional_association", "owner_entity_id": null, "canonical_host": "derma.or.kr" },
+    "www.derma.or.kr": { "ownership_type": "third_party", "source_type": "professional_association", "owner_entity_id": null, "canonical_host": "derma.or.kr" },
+    "aad.org": { "ownership_type": "third_party", "source_type": "professional_association", "owner_entity_id": null, "canonical_host": "aad.org" },
+    "www.aad.org": { "ownership_type": "third_party", "source_type": "professional_association", "owner_entity_id": null, "canonical_host": "aad.org" },
+    "modoodoc.com": { "ownership_type": "third_party", "source_type": "medical_directory", "owner_entity_id": null, "canonical_host": "modoodoc.com" },
+    "www.modoodoc.com": { "ownership_type": "third_party", "source_type": "medical_directory", "owner_entity_id": null, "canonical_host": "modoodoc.com" },
+    "rightme.kr": { "ownership_type": "third_party", "source_type": "medical_directory", "owner_entity_id": null, "canonical_host": "rightme.kr" },
+    "www.rightme.kr": { "ownership_type": "third_party", "source_type": "medical_directory", "owner_entity_id": null, "canonical_host": "rightme.kr" },
+    "sungyesa.com": { "ownership_type": "third_party", "source_type": "community", "owner_entity_id": null, "canonical_host": "sungyesa.com" },
+    "jobkorea.co.kr": { "ownership_type": "third_party", "source_type": "recruitment", "owner_entity_id": null, "canonical_host": "jobkorea.co.kr" },
+    "www.jobkorea.co.kr": { "ownership_type": "third_party", "source_type": "recruitment", "owner_entity_id": null, "canonical_host": "jobkorea.co.kr" },
+    "pf.kakao.com": { "ownership_type": "unknown", "source_type": "social_platform", "owner_entity_id": null, "canonical_host": "pf.kakao.com" },
+    "codelia.co.kr": { "ownership_type": "third_party", "source_type": "other", "owner_entity_id": null, "canonical_host": "codelia.co.kr" },
+    "kdermzip.com": { "ownership_type": "third_party", "source_type": "medical_directory", "owner_entity_id": null, "canonical_host": "kdermzip.com" },
+    "evers26.co.kr": { "ownership_type": "third_party", "source_type": "competitor_clinic", "owner_entity_id": null, "canonical_host": "evers26.co.kr" }
+  }
+}
+

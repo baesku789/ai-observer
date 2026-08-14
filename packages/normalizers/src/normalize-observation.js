@@ -1,0 +1,130 @@
+import { registry as defaultRegistry } from "./registry.js";
+import { normalizeUrl } from "./normalize-url.js";
+import { classifySource } from "./classify-source.js";
+import { stableId } from "./stable-id.js";
+
+function detectLanguage(text) {
+  if (!text) return null;
+  if (/[가-힣]/.test(text)) return "ko";
+  if (/[\u3040-\u30ff]/.test(text)) return "ja";
+  if (/[\u4e00-\u9fff]/.test(text)) return "zh";
+  return "und";
+}
+
+function validateRaw(raw) {
+  const errors = [];
+  if (!raw || typeof raw !== "object") errors.push("root must be an object");
+  if (!/^0\.(2|3)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
+  if (!Array.isArray(raw?.turn_candidates)) errors.push("turn_candidates must be an array");
+  if (errors.length) throw new Error(`Invalid raw observation: ${errors.join("; ")}`);
+}
+
+function logicalCitationGroups(response) {
+  if (Array.isArray(response.citation_groups)) return response.citation_groups;
+  const groups = new Map();
+  for (const candidate of response.citation_candidates || []) {
+    const groupId = candidate.group_id || candidate.citation_id;
+    if (!groups.has(groupId)) groups.set(groupId, { group_id: groupId, canonical_url: null, candidate_ids: [] });
+    const group = groups.get(groupId);
+    group.candidate_ids.push(candidate.citation_id);
+    if (!group.canonical_url && candidate.href) group.canonical_url = candidate.href;
+  }
+  return [...groups.values()];
+}
+
+export function normalizeObservation(raw, registry = defaultRegistry) {
+  validateRaw(raw);
+  const warnings = [];
+  const contextById = new Map((raw.chat_contexts || []).map((context) => [context.context_id, context]));
+  const sourceMap = new Map();
+  const turns = [];
+
+  function ensureSource(originalUrl, turnId, relationship, displayOrder) {
+    let canonicalUrl;
+    try { canonicalUrl = normalizeUrl(originalUrl, registry.hosts); }
+    catch (_) {
+      warnings.push({ code: "invalid_url", severity: "warning", turn_id: turnId, original_url: originalUrl });
+      return null;
+    }
+    const sourceId = stableId("src", canonicalUrl);
+    if (!sourceMap.has(sourceId)) {
+      const classified = classifySource(canonicalUrl, registry);
+      sourceMap.set(sourceId, {
+        source_id: sourceId,
+        original_urls: new Set(),
+        canonical_url: canonicalUrl,
+        domain: new URL(canonicalUrl).hostname,
+        ...classified,
+        observations: { turn_ids: new Set(), citation_count: 0, link_count: 0, first_display_order: displayOrder }
+      });
+      if (classified.ownership.type === "unknown") warnings.push({ code: "unknown_source_owner", severity: "info", source_id: sourceId, canonical_url: canonicalUrl });
+      if (classified.classification.page_type === "unknown") warnings.push({ code: "unknown_page_type", severity: "info", source_id: sourceId, canonical_url: canonicalUrl });
+    }
+    const source = sourceMap.get(sourceId);
+    source.original_urls.add(originalUrl);
+    source.observations.turn_ids.add(turnId);
+    if (relationship.includes("citation")) source.observations.citation_count += 1;
+    if (relationship.includes("link")) source.observations.link_count += 1;
+    source.observations.first_display_order = Math.min(source.observations.first_display_order, displayOrder);
+    return { source_id: sourceId, relationship, display_order: displayOrder };
+  }
+
+  for (const rawTurn of raw.turn_candidates) {
+    const context = contextById.get(rawTurn.context_id);
+    if (!context) warnings.push({ code: "missing_context", severity: "warning", turn_id: rawTurn.turn_id, context_id: rawTurn.context_id });
+    if (!rawTurn.prompt) warnings.push({ code: "missing_prompt", severity: "warning", turn_id: rawTurn.turn_id });
+    if ((rawTurn.response_candidates || []).length > 1) warnings.push({ code: "multiple_response_candidates", severity: "info", turn_id: rawTurn.turn_id, count: rawTurn.response_candidates.length });
+    const sourceRefs = new Map();
+    const responses = (rawTurn.response_candidates || []).map((response) => {
+      const citationUrls = new Set();
+      for (const [index, group] of logicalCitationGroups(response).entries()) {
+        if (!group.canonical_url) {
+          warnings.push({ code: "citation_group_without_url", severity: "info", turn_id: rawTurn.turn_id, citation_group_id: group.group_id });
+          continue;
+        }
+        const ref = ensureSource(group.canonical_url, rawTurn.turn_id, "displayed_citation", index + 1);
+        if (ref) { ref.citation_group_id = group.group_id; sourceRefs.set(ref.source_id, ref); citationUrls.add(normalizeUrl(group.canonical_url, registry.hosts)); }
+      }
+      for (const [index, link] of (response.link_candidates || []).entries()) {
+        if (!link.href) continue;
+        let normalized;
+        try { normalized = normalizeUrl(link.href, registry.hosts); } catch (_) { normalized = null; }
+        if (normalized && citationUrls.has(normalized)) {
+          const existing = sourceRefs.get(stableId("src", normalized));
+          if (existing) existing.relationship = "citation_and_link";
+          continue;
+        }
+        const ref = ensureSource(link.href, rawTurn.turn_id, "answer_link", index + 1);
+        if (ref && !sourceRefs.has(ref.source_id)) sourceRefs.set(ref.source_id, ref);
+      }
+      return { response_id: response.candidate_id, role: response.role, text: response.text, language: detectLanguage(response.text), completion_state: response.completion_state, first_seen_at: response.first_seen_at, last_updated_at: response.last_updated_at };
+    });
+    const refs = [...sourceRefs.values()].sort((a, b) => a.display_order - b.display_order);
+    turns.push({ turn_id: rawTurn.turn_id, context_id: rawTurn.context_id, turn_index: rawTurn.turn_index, chat_mode: context?.chat_mode || "unknown", question: rawTurn.prompt ? { text: rawTurn.prompt.text, language: detectLanguage(rawTurn.prompt.text) } : null, responses, search_observation: { status: refs.length ? "observed" : "not_observed", evidence: refs.length ? "displayed_citations_or_links" : "no_displayed_source", source_count: refs.length }, source_refs: refs });
+  }
+
+  const sources = [...sourceMap.values()].map((source) => ({ ...source, original_urls: [...source.original_urls], observations: { ...source.observations, turn_ids: [...source.observations.turn_ids] } })).sort((a, b) => a.source_id.localeCompare(b.source_id));
+  const byOwnership = {};
+  const uniqueSourcesByOwnership = {};
+  const byOwnerMap = new Map();
+  for (const source of sources) {
+    byOwnership[source.ownership.type] = (byOwnership[source.ownership.type] || 0) + source.observations.citation_count;
+    uniqueSourcesByOwnership[source.ownership.type] = (uniqueSourcesByOwnership[source.ownership.type] || 0) + 1;
+    const owner = source.ownership.owner_entity_id;
+    if (!owner) continue;
+    if (!byOwnerMap.has(owner)) byOwnerMap.set(owner, { entity_id: owner, source_ids: new Set(), turn_ids: new Set(), citation_count: 0, page_types: {} });
+    const item = byOwnerMap.get(owner); item.source_ids.add(source.source_id); source.observations.turn_ids.forEach((id) => item.turn_ids.add(id)); item.citation_count += source.observations.citation_count; item.page_types[source.classification.page_type] = (item.page_types[source.classification.page_type] || 0) + source.observations.citation_count;
+  }
+  const byOwner = [...byOwnerMap.values()].map((item) => ({ entity_id: item.entity_id, unique_page_count: item.source_ids.size, citation_count: item.citation_count, turn_count: item.turn_ids.size, page_types: item.page_types }));
+
+  return {
+    schema_version: "normalized-0.1.0",
+    normalizer: { name: "chatgpt-web-normalizer", version: "0.1.0" },
+    provenance: { raw_schema_version: raw.schema_version, observation_id: raw.observation_id, run_id: raw.run_id, source_captured_at: raw.captured_at },
+    environment: { surface: raw.surface, chat_modes: [...new Set((raw.chat_contexts || []).map((context) => context.chat_mode))], displayed_model: raw.environment?.displayed_model ?? null, displayed_mode: raw.environment?.displayed_mode ?? null, locale: raw.environment?.locale ?? null },
+    turns,
+    sources,
+    source_summary: { total_unique_sources: sources.length, total_citation_occurrences: sources.reduce((sum, source) => sum + source.observations.citation_count, 0), citation_occurrences_by_ownership: byOwnership, unique_sources_by_ownership: uniqueSourcesByOwnership, by_owner: byOwner },
+    normalization_warnings: warnings
+  };
+}

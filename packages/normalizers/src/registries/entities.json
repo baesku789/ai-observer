@@ -1,0 +1,11 @@
+{
+  "entities": [
+    { "entity_id": "oganacell_brand", "entity_type": "brand", "canonical_name": "오가나셀", "aliases": ["OGANACELL"] },
+    { "entity_id": "oganacell_cheongdam", "entity_type": "clinic_branch", "canonical_name": "오가나셀피부과의원 청담본점", "aliases": ["오가나셀 청담", "청담본점"] },
+    { "entity_id": "oganacell_dongdaemun", "entity_type": "clinic_branch", "canonical_name": "오가나셀피부과의원 동대문점", "aliases": ["오가나셀 동대문", "동대문점"] },
+    { "entity_id": "oganacell_jamsil", "entity_type": "clinic_branch", "canonical_name": "오가나셀피부과의원 잠실점", "aliases": ["오가나셀 잠실", "잠실점"] },
+    { "entity_id": "oganacell_magok", "entity_type": "clinic_branch", "canonical_name": "오가나셀피부과의원 마곡점", "aliases": ["오가나셀 마곡", "마곡점"] },
+    { "entity_id": "oganacell_seongsu", "entity_type": "clinic_branch", "canonical_name": "오가나셀피부과의원 성수점", "aliases": ["오가나셀 성수", "성수점"] }
+  ]
+}
+

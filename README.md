@@ -68,7 +68,19 @@ node --check apps/extension/background.js
 node --check apps/extension/content.js
 node --check apps/extension/sidepanel.js
 python3 -m json.tool apps/extension/manifest.json >/dev/null
+npm test
 ```
+
+## Normalizer
+
+Collector raw JSON을 병원·지점·페이지별로 집계 가능한 구조로 기계적으로 변환한다. 네트워크나 AI를 사용하지 않으며, 미등록 출처는 추측하지 않고 `unknown`과 경고로 남긴다.
+
+```bash
+npm run normalize -- /path/to/raw-observation.json \
+  --output artifacts/normalized-observation.json
+```
+
+Normalizer는 추적 파라미터 제거, 안정적인 source ID 생성, 인용 그룹 중복 제거, 검증된 registry 기반 소유자 분류, URL 경로 기반 페이지 유형 분류와 병원별 인용 집계를 수행한다.
 
 ## 예정 구조
 

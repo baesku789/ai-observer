@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-observer.local/schemas/raw-observation-v0.3.schema.json",
+  "title": "AI Observer Raw Observation v0.3",
+  "type": "object",
+  "required": ["schema_version", "observation_id", "run_id", "surface", "environment", "chat_contexts", "turn_candidates", "collector"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^0\\.3\\." },
+    "observation_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "surface": { "const": "chatgpt_web" },
+    "captured_at": { "type": "string" },
+    "measurement_started_at": { "type": ["string", "null"] },
+    "measurement_ended_at": { "type": ["string", "null"] },
+    "environment": { "type": "object" },
+    "chat_contexts": { "type": "array", "items": { "$ref": "#/$defs/context" } },
+    "context_events": { "type": "array" },
+    "turn_candidates": { "type": "array", "items": { "$ref": "#/$defs/turn" } },
+    "capture_warnings": { "type": "array" },
+    "collector": { "type": "object", "required": ["name", "version"] }
+  },
+  "$defs": {
+    "context": {
+      "type": "object",
+      "required": ["context_id", "chat_mode"],
+      "properties": {
+        "context_id": { "type": "string" },
+        "chat_mode": { "enum": ["regular", "temporary", "unknown"] }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "required": ["turn_id", "context_id", "response_candidates"],
+      "properties": {
+        "turn_id": { "type": "string" },
+        "context_id": { "type": "string" },
+        "prompt": { "type": ["object", "null"] },
+        "response_candidates": { "type": "array" }
+      }
+    }
+  }
+}
+

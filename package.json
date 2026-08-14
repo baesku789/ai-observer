@@ -1,0 +1,11 @@
+{
+  "name": "ai-observer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "normalize": "node packages/normalizers/cli.js",
+    "test": "node --test packages/normalizers/test/*.test.js",
+    "check": "node --check apps/extension/content.js && node --check packages/normalizers/cli.js"
+  }
+}
+

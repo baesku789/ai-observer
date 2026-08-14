@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-observer.local/schemas/normalized-observation-v0.1.schema.json",
+  "title": "AI Observer Normalized Observation v0.1",
+  "type": "object",
+  "required": ["schema_version", "normalizer", "provenance", "environment", "turns", "sources", "source_summary", "normalization_warnings"],
+  "properties": {
+    "schema_version": { "const": "normalized-0.1.0" },
+    "normalizer": { "type": "object", "required": ["name", "version"] },
+    "provenance": { "type": "object", "required": ["raw_schema_version", "observation_id", "run_id"] },
+    "environment": { "type": "object" },
+    "turns": { "type": "array", "items": { "$ref": "#/$defs/turn" } },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "source_summary": { "type": "object", "required": ["total_unique_sources", "total_citation_occurrences", "citation_occurrences_by_ownership", "unique_sources_by_ownership", "by_owner"] },
+    "normalization_warnings": { "type": "array" }
+  },
+  "$defs": {
+    "turn": {
+      "type": "object",
+      "required": ["turn_id", "context_id", "chat_mode", "responses", "search_observation", "source_refs"]
+    },
+    "source": {
+      "type": "object",
+      "required": ["source_id", "original_urls", "canonical_url", "domain", "ownership", "classification", "observations"],
+      "properties": {
+        "source_id": { "type": "string", "pattern": "^src_[0-9a-f]{16}$" },
+        "original_urls": { "type": "array", "items": { "type": "string" } },
+        "canonical_url": { "type": "string", "format": "uri" },
+        "domain": { "type": "string" },
+        "ownership": { "type": "object", "required": ["type", "owner_entity_id", "method"] },
+        "classification": { "type": "object", "required": ["source_type", "page_type", "method"] },
+        "observations": { "type": "object", "required": ["turn_ids", "citation_count", "link_count", "first_display_order"] }
+      }
+    }
+  }
+}

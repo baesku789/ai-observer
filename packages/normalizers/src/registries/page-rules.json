@@ -1,0 +1,21 @@
+{
+  "rules": [
+    { "path_contains": "/company/doctor", "page_type": "doctor_profile" },
+    { "path_contains": "/medical/", "page_type": "doctor_profile" },
+    { "path_contains": "/reservation", "page_type": "reservation" },
+    { "path_contains": "/price", "page_type": "pricing" },
+    { "path_contains": "/event", "page_type": "event" },
+    { "path_contains": "/recruit/", "page_type": "recruitment" },
+    { "path_contains": "/skincare/", "page_type": "treatment" },
+    { "path_contains": "/elasticity/", "page_type": "treatment" },
+    { "path_contains": "/procedure", "page_type": "treatment" },
+    { "path_contains": "/treatment", "page_type": "treatment" },
+    { "path_contains": "/category/", "page_type": "category" },
+    { "path_contains": "/clinic/", "page_type": "medical_directory" },
+    { "path_contains": "/hospitals/category-search", "page_type": "medical_directory" },
+    { "path_contains": "/drlist/", "page_type": "doctor_profile" },
+    { "path_contains": "/faq", "page_type": "article" },
+    { "path_contains": "/board/", "page_type": "article" }
+  ]
+}
+
