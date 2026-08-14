@@ -11,6 +11,11 @@ Chrome 웹 UI는 수시로 바뀔 수 있으므로 릴리스 전 아래 항목�
 - 측정 시작 후 질문과 답변이 role별 후보로 저장된다.
 - 측정 중지 후 DOM 변경이 결과에 추가되지 않는다.
 - JSON 다운로드 이름에 시각이 포함된다.
+- 각 답변의 `last_text_changed_at`과 완료 판정 증거가 기록된다.
+- 완료된 답변 대부분이 `quiet_candidate`로 기록된다.
+- 인용 하나의 pill과 link가 같은 `citation_group`으로 묶인다.
+- `citation_groups.length`가 화면에서 보이는 논리 인용 수와 일치한다.
+- 모델·응답 모드가 값과 DOM 증거로 기록되거나 탐사용 UI 후보가 남는다.
 
 ## 탐사 케이스
 

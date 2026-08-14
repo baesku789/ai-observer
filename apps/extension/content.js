@@ -1,8 +1,8 @@
 (() => {
-  const SCHEMA_VERSION = "0.2.0-draft";
-  const COLLECTOR_VERSION = "0.2.0";
+  const SCHEMA_VERSION = "0.3.0-draft";
+  const COLLECTOR_VERSION = "0.3.0";
   const QUIET_PERIOD_MS = 1500;
-  const state = { measuring: false, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, observer: null, scanTimer: null, quietTimer: null, lastMutationAt: null };
+  const state = { measuring: false, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
 
   const now = () => new Date().toISOString();
   const makeId = (prefix) => `${prefix}_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
@@ -52,6 +52,20 @@
       return { citation_id: `citation_${index + 1}`, group_id: groups.get(key), element_type: item.matches('[data-testid*=citation]') ? "pill" : item.matches("a[href]") ? "link" : "control", tag: item.tagName.toLowerCase(), text: textOf(item) || null, href: item.href || item.querySelector?.("a[href]")?.href || null, aria_label: item.getAttribute("aria-label"), data_citation: item.getAttribute("data-citation"), data_testid: item.getAttribute("data-testid") };
     });
   }
+  function citationGroupsFrom(candidates) {
+    const groups = new Map();
+    for (const candidate of candidates) {
+      if (!groups.has(candidate.group_id)) groups.set(candidate.group_id, { group_id: candidate.group_id, canonical_url: null, text: null, candidate_ids: [], evidence_types: [] });
+      const group = groups.get(candidate.group_id);
+      group.candidate_ids.push(candidate.citation_id);
+      if (!group.evidence_types.includes(candidate.element_type)) group.evidence_types.push(candidate.element_type);
+      if (!group.canonical_url && candidate.href) {
+        try { const url = new URL(candidate.href); url.searchParams.delete("utm_source"); group.canonical_url = url.href; } catch (_) { group.canonical_url = candidate.href; }
+      }
+      if (!group.text && candidate.text) group.text = candidate.text.replace(/\s*\+\d+$/, "").trim();
+    }
+    return [...groups.values()];
+  }
   function safeHtml(node) {
     const clone = node.cloneNode(true);
     clone.querySelectorAll("script, style, input, textarea, [contenteditable=true]").forEach((element) => element.remove());
@@ -72,11 +86,27 @@
     const visibleLabel = visibleTemporaryLabel();
     return { chat_mode: urlTemporary || visibleLabel ? "temporary" : "regular", evidence: { url_temporary_chat: urlTemporary, visible_label: visibleLabel, classification_source: urlTemporary && visibleLabel ? "url_and_dom" : urlTemporary ? "url" : visibleLabel ? "dom" : "url_absence" } };
   }
-  function displayedModel() {
-    for (const selector of ['button[data-testid="model-switcher-dropdown-button"]', 'button[aria-label*="model" i]', 'button[aria-label*="모델" i]']) {
-      const text = textOf(document.querySelector(selector)); if (text) return text;
+  function uiLabelEvidence(selectors, patterns) {
+    for (const selector of selectors) {
+      for (const node of document.querySelectorAll(selector)) {
+        const text = textOf(node) || node.getAttribute("aria-label") || "";
+        if (text && (!patterns.length || patterns.some((pattern) => pattern.test(text)))) return { value: text, selector, tag: node.tagName.toLowerCase(), aria_label: node.getAttribute("aria-label"), data_testid: node.getAttribute("data-testid"), html: safeHtml(node).slice(0, 4000) };
+      }
     }
     return null;
+  }
+  function displayedModelEvidence() {
+    return uiLabelEvidence(['button[data-testid="model-switcher-dropdown-button"]', '[data-testid*="model-switcher"]', 'header button[aria-haspopup="menu"]', 'header button[aria-label]'], [/gpt/i, /chatgpt/i, /모델/i, /model/i, /o\d/i]);
+  }
+  function displayedModeEvidence() {
+    return uiLabelEvidence(['button[data-testid*="mode"]', '[data-testid*="reasoning"]', 'form button[aria-haspopup="menu"]', 'form button[aria-label]'], [/instant/i, /thinking/i, /pro/i, /reason/i, /빠른/i, /생각/i, /추론/i]);
+  }
+  function uiLabelCandidates() {
+    return [...document.querySelectorAll('header button, header [aria-label], form button[aria-haspopup="menu"], form button[aria-label]')].slice(0, 40).map((node) => ({ text: textOf(node) || null, aria_label: node.getAttribute("aria-label"), data_testid: node.getAttribute("data-testid"), tag: node.tagName.toLowerCase() })).filter((item) => item.text || item.aria_label || item.data_testid);
+  }
+  function responseControls() {
+    const stop = document.querySelector('button[data-testid="stop-button"], button[aria-label*="stop generating" i], button[aria-label*="응답 중지" i]');
+    return { stop_control_visible: Boolean(stop), stop_control_text: stop ? textOf(stop) || stop.getAttribute("aria-label") : null };
   }
   function contextSignature() {
     const url = new URL(location.href);
@@ -84,7 +114,7 @@
   }
   function contextSnapshot() {
     const mode = chatModeEvidence();
-    return { context_id: makeId("context"), first_seen_at: now(), last_seen_at: now(), chat_mode: mode.chat_mode, chat_mode_evidence: mode.evidence, conversation_url: location.href, conversation_id_candidate: new URL(location.href).pathname.match(/^\/c\/([^/]+)/)?.[1] || null, signature: contextSignature() };
+    return { context_id: makeId("context"), first_seen_at: now(), last_seen_at: now(), chat_mode: mode.chat_mode, chat_mode_evidence: mode.evidence, conversation_url: location.href, conversation_title_candidate: document.title && document.title !== "ChatGPT" ? document.title : null, page_title: document.title || null, conversation_id_candidate: new URL(location.href).pathname.match(/^\/c\/([^/]+)/)?.[1] || null, signature: contextSignature() };
   }
   function openContext(reason, force = false) {
     if (!state.measuring) return;
@@ -115,12 +145,18 @@
       const key = nodeKey(node, index); if (state.baselineKeys.has(key)) continue;
       const text = textOf(node); if (!text) continue;
       const recordKey = `${state.currentContext.context_id}:${key}`;
-      const existing = state.records.get(recordKey); const role = roleOf(node);
-      state.records.set(recordKey, { candidate_id: existing?.candidate_id || makeId("candidate"), context_id: state.currentContext.context_id, role, text, html: safeHtml(node), first_seen_at: existing?.first_seen_at || now(), last_updated_at: now(), completion_state: role === "assistant" && Date.now() - (state.lastMutationAt || Date.now()) >= QUIET_PERIOD_MS ? "quiet_candidate" : "unknown", completion_evidence: role === "assistant" ? { quiet_period_ms: QUIET_PERIOD_MS } : null, link_candidates: linksFrom(node), citation_candidates: citationsFrom(node) });
+      const existing = state.records.get(recordKey); const role = roleOf(node); const capturedAt = now();
+      const textChanged = !existing || existing.text !== text;
+      const lastTextChangedAt = textChanged ? capturedAt : existing.last_text_changed_at;
+      const quietForMs = Date.now() - Date.parse(lastTextChangedAt);
+      const controls = responseControls();
+      const citationCandidates = citationsFrom(node);
+      const completionState = role !== "assistant" ? null : quietForMs >= QUIET_PERIOD_MS && !controls.stop_control_visible ? "quiet_candidate" : "streaming_or_unsettled";
+      state.records.set(recordKey, { candidate_id: existing?.candidate_id || makeId("candidate"), context_id: state.currentContext.context_id, role, text, html: safeHtml(node), first_seen_at: existing?.first_seen_at || capturedAt, last_updated_at: textChanged ? capturedAt : existing.last_updated_at, last_text_changed_at: lastTextChangedAt, completion_state: completionState, completion_evidence: role === "assistant" ? { text_quiet_for_ms: quietForMs, required_quiet_period_ms: QUIET_PERIOD_MS, ...controls } : null, link_candidates: linksFrom(node), citation_candidates: citationCandidates, citation_groups: citationGroupsFrom(citationCandidates) });
     }
   }
   function scheduleScan() {
-    state.lastMutationAt = Date.now(); clearTimeout(state.scanTimer); clearTimeout(state.quietTimer);
+    clearTimeout(state.scanTimer); clearTimeout(state.quietTimer);
     state.scanTimer = setTimeout(scan, 250); state.quietTimer = setTimeout(scan, QUIET_PERIOD_MS + 50);
   }
   function start() {
@@ -129,11 +165,12 @@
     state.records.clear(); openContext("measurement_started", true);
     state.observer = new MutationObserver(scheduleScan);
     state.observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["href", "aria-label", "data-testid", "data-citation"] });
+    state.contextTimer = setInterval(scan, 1000);
     return status();
   }
   function stop() {
     scan(); state.measuring = false; state.endedAt = now(); if (state.currentContext) state.currentContext.last_seen_at = state.endedAt;
-    state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); return status();
+    state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); clearInterval(state.contextTimer); state.contextTimer = null; return status();
   }
   function status() {
     return { measuring: state.measuring, run_id: state.runId, started_at: state.startedAt, candidate_count: state.records.size, context_count: state.contexts.length, chat_mode: state.currentContext?.chat_mode || null, warning_count: state.warnings.length };
@@ -151,9 +188,10 @@
     return turns;
   }
   function observation() {
-    scan(); const capturedAt = now(); const model = displayedModel();
-    if (!model) addWarning("displayed_model_not_found", "표시된 모델을 확인하지 못했습니다.");
-    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, displayed_model: model, displayed_mode: model }, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: buildTurns(), capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
+    scan(); const capturedAt = now(); const model = displayedModelEvidence(); const mode = displayedModeEvidence();
+    if (!model) addWarning("displayed_model_not_found", "표시된 모델을 확인하지 못했습니다. UI 후보 증거를 확인하세요.");
+    if (!mode) addWarning("displayed_mode_not_found", "표시된 응답 모드를 확인하지 못했습니다. UI 후보 증거를 확인하세요.");
+    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, displayed_model: model?.value || null, displayed_model_evidence: model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: buildTurns(), capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
   }
 
   window.addEventListener("popstate", () => { if (state.measuring) setTimeout(scan, 100); });

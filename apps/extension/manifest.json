@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AI Observer — ChatGPT Discovery",
   "description": "ChatGPT 화면에서 질문, 답변, 링크와 DOM 증거를 사용자의 명시적 조작으로 수집합니다.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minimum_chrome_version": "114",
   "permissions": ["activeTab", "downloads", "sidePanel", "storage"],
   "host_permissions": ["https://chatgpt.com/*"],

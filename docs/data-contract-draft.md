@@ -1,6 +1,6 @@
 # 데이터 계약 초안
 
-상태: `0.2.0-draft / 1차 실측 반영`
+상태: `0.3.0-draft / 2차 실측 반영`
 
 이 문서는 구현 방향을 맞추기 위한 가설 계약이다. ChatGPT 웹 탐사 결과에 따라 필드가 추가·삭제·변경될 수 있다.
 
@@ -42,7 +42,7 @@ UserInput
 
 ```json
 {
-  "schema_version": "0.2.0-draft",
+  "schema_version": "0.3.0-draft",
   "observation_id": "obs_example",
   "run_id": "run_example",
   "surface": "chatgpt_web",
@@ -50,7 +50,9 @@ UserInput
   "environment": {
     "page_url": null,
     "displayed_model": null,
+    "displayed_model_evidence": null,
     "displayed_mode": null,
+    "displayed_mode_evidence": null,
     "locale": "ko-KR"
   },
   "chat_contexts": [],
@@ -83,6 +85,8 @@ UserInput
 `candidate`라는 이름은 아직 DOM 의미가 확정되지 않았음을 나타낸다. 실측 전에는 링크가 인용인지, 답변 노드가 완결된 turn인지 단정하지 않는다.
 
 각 `chat_context`는 `chat_mode: regular | temporary | unknown`과 URL·화면 라벨 기반 판정 근거를 가진다. 측정 중 컨텍스트가 바뀌면 `context_events`에 기록하고 모든 turn 후보를 당시 `context_id`에 연결한다. 하나의 인용을 구성하는 pill과 링크 후보는 동일한 `group_id`로 묶는다.
+
+응답의 `citation_candidates`는 DOM 증거를 보존하므로 pill과 link가 함께 들어갈 수 있다. 정량 집계에는 정규 URL과 후보 ID를 묶은 `citation_groups`를 사용한다. 완료 후보는 페이지 전체가 아니라 응답별 `last_text_changed_at`, 텍스트 휴지 시간, 중지 버튼 표시 여부로 판정한다. 모델과 응답 모드는 값과 함께 선택자·라벨·HTML 증거를 저장하며 감지 실패 시 헤더와 입력 영역의 `ui_label_candidates`를 탐사 증거로 남긴다.
 
 ## 정규화 데이터 후보
 
