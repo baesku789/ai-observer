@@ -1,6 +1,6 @@
 # 데이터 계약 초안
 
-상태: `draft / 실측 전`
+상태: `0.2.0-draft / 1차 실측 반영`
 
 이 문서는 구현 방향을 맞추기 위한 가설 계약이다. ChatGPT 웹 탐사 결과에 따라 필드가 추가·삭제·변경될 수 있다.
 
@@ -42,18 +42,23 @@ UserInput
 
 ```json
 {
-  "schema_status": "draft",
+  "schema_version": "0.2.0-draft",
   "observation_id": "obs_example",
   "run_id": "run_example",
   "surface": "chatgpt_web",
   "captured_at": "2026-08-14T00:00:00+09:00",
-  "page": {
-    "url": null,
-    "displayed_mode": null
+  "environment": {
+    "page_url": null,
+    "displayed_model": null,
+    "displayed_mode": null,
+    "locale": "ko-KR"
   },
+  "chat_contexts": [],
+  "context_events": [],
   "turn_candidates": [
     {
       "turn_id": "turn_example",
+      "context_id": "context_example",
       "prompt": {
         "text": "마곡에서 피부과 추천해줘",
         "html": null
@@ -76,6 +81,8 @@ UserInput
 ```
 
 `candidate`라는 이름은 아직 DOM 의미가 확정되지 않았음을 나타낸다. 실측 전에는 링크가 인용인지, 답변 노드가 완결된 turn인지 단정하지 않는다.
+
+각 `chat_context`는 `chat_mode: regular | temporary | unknown`과 URL·화면 라벨 기반 판정 근거를 가진다. 측정 중 컨텍스트가 바뀌면 `context_events`에 기록하고 모든 turn 후보를 당시 `context_id`에 연결한다. 하나의 인용을 구성하는 pill과 링크 후보는 동일한 `group_id`로 묶는다.
 
 ## 정규화 데이터 후보
 
@@ -132,4 +139,3 @@ UserInput
 - 대화 URL 보존 여부
 - 표시 모델·모드의 안정적 추출 여부
 - HTML 전체 보존 범위와 보존 기간
-

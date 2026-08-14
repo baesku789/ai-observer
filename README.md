@@ -51,8 +51,13 @@ ChatGPT 등 AI 서비스에서 실제 사용자가 보는 답변을 관측하고
 - 화면에 표시된 모델/모드 후보 수집
 - 1.5초간 DOM 변경이 없는 답변을 `quiet_candidate`로 표시
 - 선택자 실패를 `capture_warnings`에 기록
+- 일반 채팅과 임시 채팅을 `chat_contexts`로 분리
+- URL·채팅 모드 전환을 `context_events`로 기록하고 각 턴에 `context_id` 연결
+- 같은 인용 UI의 pill과 링크를 `citation.group_id`로 묶음
 
 `quiet_candidate`는 ChatGPT 내부 완료 상태가 아니라 탐사용 휴지기 추정값이다. 추천 여부, 출처의 의미적 적합성, 점수는 이 익스텐션에서 판정하지 않는다.
+
+채팅 유형은 `regular | temporary`로 기록하며 판정 근거를 함께 저장한다. `temporary-chat=true` URL이나 화면의 임시 채팅 라벨이 있으면 `temporary`, 둘 다 없으면 `regular` 후보로 분류한다.
 
 ## 로컬 검증
 

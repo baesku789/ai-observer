@@ -31,8 +31,8 @@ function render(status) {
   elements.dot.classList.toggle("active", active);
   elements.label.textContent = active ? "측정 중" : "측정 준비됨";
   elements.detail.textContent = active
-    ? `새 후보 ${status.candidate_count}개 · 경고 ${status.warning_count}개`
-    : status?.run_id ? `수집 후보 ${status.candidate_count}개 · 내려받을 수 있습니다.` : "측정 시작 이후의 새 대화만 기록합니다.";
+    ? `${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"} · 컨텍스트 ${status.context_count}개 · 후보 ${status.candidate_count}개`
+    : status?.run_id ? `컨텍스트 ${status.context_count}개 · 수집 후보 ${status.candidate_count}개 · 내려받을 수 있습니다.` : "측정 시작 이후의 새 대화만 기록합니다.";
   elements.start.disabled = active;
   elements.stop.disabled = !active;
   elements.export.disabled = !status?.run_id;
@@ -81,4 +81,3 @@ elements.export.addEventListener("click", async () => {
 
 refresh();
 setInterval(refresh, 1500);
-
