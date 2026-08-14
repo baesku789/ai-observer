@@ -1,6 +1,6 @@
 # 데이터 계약 초안
 
-상태: `0.3.0-draft / 2차 실측 반영`
+상태: `0.4.0-draft / 사용자 확정 대화 경계 반영`
 
 이 문서는 구현 방향을 맞추기 위한 가설 계약이다. ChatGPT 웹 탐사 결과에 따라 필드가 추가·삭제·변경될 수 있다.
 
@@ -42,11 +42,15 @@ UserInput
 
 ```json
 {
-  "schema_version": "0.3.0-draft",
+  "schema_version": "0.4.0-draft",
   "observation_id": "obs_example",
   "run_id": "run_example",
   "surface": "chatgpt_web",
   "captured_at": "2026-08-14T00:00:00+09:00",
+  "measurement": {
+    "measurement_type": "independent_query",
+    "boundary_strategy": "user_confirmed"
+  },
   "environment": {
     "page_url": null,
     "displayed_model": null,
@@ -57,10 +61,13 @@ UserInput
   },
   "chat_contexts": [],
   "context_events": [],
+  "conversation_instances": [],
+  "conversation_events": [],
   "turn_candidates": [
     {
       "turn_id": "turn_example",
       "context_id": "context_example",
+      "conversation_instance_id": "conversation_example",
       "prompt": {
         "text": "마곡에서 피부과 추천해줘",
         "html": null
@@ -87,6 +94,8 @@ UserInput
 각 `chat_context`는 `chat_mode: regular | temporary | unknown`과 URL·화면 라벨 기반 판정 근거를 가진다. 측정 중 컨텍스트가 바뀌면 `context_events`에 기록하고 모든 turn 후보를 당시 `context_id`에 연결한다. 하나의 인용을 구성하는 pill과 링크 후보는 동일한 `group_id`로 묶는다.
 
 응답의 `citation_candidates`는 DOM 증거를 보존하므로 pill과 link가 함께 들어갈 수 있다. 정량 집계에는 정규 URL과 후보 ID를 묶은 `citation_groups`를 사용한다. 완료 후보는 페이지 전체가 아니라 응답별 `last_text_changed_at`, 텍스트 휴지 시간, 중지 버튼 표시 여부로 판정한다. 모델과 응답 모드는 값과 함께 선택자·라벨·HTML 증거를 저장하며 감지 실패 시 헤더와 입력 영역의 `ui_label_candidates`를 탐사 증거로 남긴다.
+
+임시 채팅은 안정적인 대화 ID가 노출되지 않으므로 사용자가 사이드패널의 `새 대화로 분리`를 눌러 경계를 확정한다. Collector는 각 경계에 `conversation_instance_id`를 만들고 모든 turn을 연결한다. `independent_query`에서는 대화당 질문 1개를 요구하고, `conversation_journey`에서는 여러 turn을 허용한다.
 
 ## 정규화 데이터 후보
 

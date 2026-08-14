@@ -16,6 +16,9 @@ Chrome 웹 UI는 수시로 바뀔 수 있으므로 릴리스 전 아래 항목�
 - 인용 하나의 pill과 link가 같은 `citation_group`으로 묶인다.
 - `citation_groups.length`가 화면에서 보이는 논리 인용 수와 일치한다.
 - 모델·응답 모드가 값과 DOM 증거로 기록되거나 탐사용 UI 후보가 남는다.
+- 새 임시 채팅에서 **새 대화로 분리**를 누르면 `conversation_instance_id`가 바뀐다.
+- 독립 질문 대화에 질문이 두 개 이상이면 `independent_query_turn_count` 경고가 생긴다.
+- 연속 대화에서는 여러 turn이 하나의 `conversation_instance_id`에 연결된다.
 
 ## 탐사 케이스
 

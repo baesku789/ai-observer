@@ -1,7 +1,9 @@
 const elements = {
   start: document.querySelector("#start"),
+  newConversation: document.querySelector("#new-conversation"),
   stop: document.querySelector("#stop"),
   export: document.querySelector("#export"),
+  measurementType: document.querySelector("#measurement-type"),
   dot: document.querySelector("#status-dot"),
   label: document.querySelector("#status-label"),
   detail: document.querySelector("#status-detail"),
@@ -14,10 +16,10 @@ async function activeChatGptTab() {
   return tab;
 }
 
-async function request(type) {
+async function request(type, payload = {}) {
   const tab = await activeChatGptTab();
   try {
-    const response = await chrome.tabs.sendMessage(tab.id, { type });
+    const response = await chrome.tabs.sendMessage(tab.id, { type, ...payload });
     if (!response?.ok) throw new Error(response?.error || "수집기 요청에 실패했습니다.");
     return response.data;
   } catch (error) {
@@ -31,11 +33,13 @@ function render(status) {
   elements.dot.classList.toggle("active", active);
   elements.label.textContent = active ? "측정 중" : "측정 준비됨";
   elements.detail.textContent = active
-    ? `${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"} · 컨텍스트 ${status.context_count}개 · 후보 ${status.candidate_count}개`
-    : status?.run_id ? `컨텍스트 ${status.context_count}개 · 수집 후보 ${status.candidate_count}개 · 내려받을 수 있습니다.` : "측정 시작 이후의 새 대화만 기록합니다.";
+    ? `${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"} · 대화 ${status.conversation_count}개 · 후보 ${status.candidate_count}개`
+    : status?.run_id ? `대화 ${status.conversation_count}개 · 수집 후보 ${status.candidate_count}개 · 내려받을 수 있습니다.` : "측정 시작 이후의 새 대화만 기록합니다.";
   elements.start.disabled = active;
+  elements.newConversation.disabled = !active;
   elements.stop.disabled = !active;
   elements.export.disabled = !status?.run_id;
+  elements.measurementType.disabled = active;
 }
 
 async function refresh() {
@@ -47,6 +51,7 @@ async function refresh() {
     elements.detail.textContent = "ChatGPT 탭을 선택하거나 새로고침하세요.";
     elements.message.textContent = error.message;
     elements.start.disabled = true;
+    elements.newConversation.disabled = true;
     elements.stop.disabled = true;
     elements.export.disabled = true;
   }
@@ -61,7 +66,20 @@ async function perform(type) {
   }
 }
 
-elements.start.addEventListener("click", () => perform("observer:start"));
+elements.start.addEventListener("click", async () => {
+  try {
+    elements.message.textContent = "";
+    render(await request("observer:start", { measurement_type: elements.measurementType.value }));
+  } catch (error) { elements.message.textContent = error.message; }
+});
+elements.newConversation.addEventListener("click", async () => {
+  try {
+    elements.message.textContent = "";
+    render(await request("observer:new-conversation"));
+    elements.message.style.color = "#2d6a4f";
+    elements.message.textContent = "새 대화 경계를 기록했습니다. 이제 질문을 입력하세요.";
+  } catch (error) { elements.message.style.color = "#a33a2b"; elements.message.textContent = error.message; }
+});
 elements.stop.addEventListener("click", () => perform("observer:stop"));
 elements.export.addEventListener("click", async () => {
   try {

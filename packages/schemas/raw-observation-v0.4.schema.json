@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-observer.local/schemas/raw-observation-v0.4.schema.json",
+  "title": "AI Observer Raw Observation v0.4",
+  "type": "object",
+  "required": ["schema_version", "observation_id", "run_id", "surface", "measurement", "conversation_instances", "environment", "chat_contexts", "turn_candidates", "collector"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^0\\.4\\." },
+    "observation_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "surface": { "const": "chatgpt_web" },
+    "measurement": {
+      "type": "object",
+      "required": ["measurement_type", "boundary_strategy"],
+      "properties": {
+        "measurement_type": { "enum": ["independent_query", "conversation_journey"] },
+        "boundary_strategy": { "const": "user_confirmed" }
+      }
+    },
+    "conversation_instances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["conversation_instance_id", "started_at", "boundary_source", "context_ids", "chat_modes"],
+        "properties": {
+          "conversation_instance_id": { "type": "string" },
+          "boundary_source": { "enum": ["measurement_started", "user_confirmed"] },
+          "context_ids": { "type": "array", "items": { "type": "string" } },
+          "chat_modes": { "type": "array", "items": { "enum": ["regular", "temporary", "unknown"] } }
+        }
+      }
+    },
+    "environment": { "type": "object" },
+    "chat_contexts": { "type": "array" },
+    "context_events": { "type": "array" },
+    "conversation_events": { "type": "array" },
+    "turn_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["turn_id", "context_id", "conversation_instance_id", "response_candidates"],
+        "properties": {
+          "turn_id": { "type": "string" },
+          "context_id": { "type": "string" },
+          "conversation_instance_id": { "type": "string" },
+          "response_candidates": { "type": "array" }
+        }
+      }
+    },
+    "capture_warnings": { "type": "array" },
+    "collector": { "type": "object", "required": ["name", "version"] }
+  }
+}
+

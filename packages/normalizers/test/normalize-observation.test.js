@@ -28,6 +28,7 @@ const raw = {
 
 test("citation pill과 link를 하나의 출처로 정규화한다", () => {
   const result = normalizeObservation(raw);
+  assert.equal(result.schema_version, "normalized-0.2.0");
   assert.equal(result.sources.length, 1);
   assert.equal(result.source_summary.total_unique_sources, 1);
   assert.equal(result.source_summary.total_citation_occurrences, 1);
@@ -58,4 +59,29 @@ test("Collector 0.2 실측 자료도 호환한다", () => {
   assert.equal(result.provenance.raw_schema_version, "0.2.0-draft");
   assert.equal(result.sources.length, 1);
   assert.equal(result.source_summary.total_citation_occurrences, 1);
+});
+
+test("Collector 0.4 대화 경계를 보존하고 독립 질문을 검증한다", () => {
+  const modern = structuredClone(raw);
+  modern.schema_version = "0.4.0-draft";
+  modern.measurement = { measurement_type: "independent_query", boundary_strategy: "user_confirmed" };
+  modern.conversation_instances = [{ conversation_instance_id: "conversation_1", started_at: "2026-08-14T00:00:00Z", ended_at: "2026-08-14T00:01:00Z", boundary_source: "measurement_started", context_ids: ["context_1"], chat_modes: ["temporary"] }];
+  modern.turn_candidates[0].conversation_instance_id = "conversation_1";
+  const result = normalizeObservation(modern);
+  assert.equal(result.measurement.measurement_type, "independent_query");
+  assert.equal(result.conversations[0].turn_count, 1);
+  assert.equal(result.turns[0].conversation_instance_id, "conversation_1");
+  assert.equal(result.normalization_warnings.some((warning) => warning.code === "independent_query_turn_count"), false);
+});
+
+test("독립 질문 대화에 여러 turn이 있으면 경고한다", () => {
+  const modern = structuredClone(raw);
+  modern.schema_version = "0.4.0-draft";
+  modern.measurement = { measurement_type: "independent_query", boundary_strategy: "user_confirmed" };
+  modern.conversation_instances = [{ conversation_instance_id: "conversation_1", started_at: "2026-08-14T00:00:00Z", ended_at: null, boundary_source: "measurement_started", context_ids: ["context_1"], chat_modes: ["temporary"] }];
+  modern.turn_candidates[0].conversation_instance_id = "conversation_1";
+  modern.turn_candidates.push({ ...structuredClone(modern.turn_candidates[0]), turn_id: "turn_2", turn_index: 2 });
+  const result = normalizeObservation(modern);
+  const warning = result.normalization_warnings.find((item) => item.code === "independent_query_turn_count");
+  assert.equal(warning.observed_turn_count, 2);
 });

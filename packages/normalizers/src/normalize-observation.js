@@ -14,7 +14,7 @@ function detectLanguage(text) {
 function validateRaw(raw) {
   const errors = [];
   if (!raw || typeof raw !== "object") errors.push("root must be an object");
-  if (!/^0\.(2|3)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
+  if (!/^0\.(2|3|4)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
   if (!Array.isArray(raw?.turn_candidates)) errors.push("turn_candidates must be an array");
   if (errors.length) throw new Error(`Invalid raw observation: ${errors.join("; ")}`);
 }
@@ -36,6 +36,7 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
   validateRaw(raw);
   const warnings = [];
   const contextById = new Map((raw.chat_contexts || []).map((context) => [context.context_id, context]));
+  const conversationById = new Map((raw.conversation_instances || []).map((conversation) => [conversation.conversation_instance_id, conversation]));
   const sourceMap = new Map();
   const turns = [];
 
@@ -72,6 +73,7 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
   for (const rawTurn of raw.turn_candidates) {
     const context = contextById.get(rawTurn.context_id);
     if (!context) warnings.push({ code: "missing_context", severity: "warning", turn_id: rawTurn.turn_id, context_id: rawTurn.context_id });
+    if (raw.schema_version.startsWith("0.4.") && !conversationById.has(rawTurn.conversation_instance_id)) warnings.push({ code: "missing_conversation_instance", severity: "warning", turn_id: rawTurn.turn_id, conversation_instance_id: rawTurn.conversation_instance_id });
     if (!rawTurn.prompt) warnings.push({ code: "missing_prompt", severity: "warning", turn_id: rawTurn.turn_id });
     if ((rawTurn.response_candidates || []).length > 1) warnings.push({ code: "multiple_response_candidates", severity: "info", turn_id: rawTurn.turn_id, count: rawTurn.response_candidates.length });
     const sourceRefs = new Map();
@@ -100,8 +102,15 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
       return { response_id: response.candidate_id, role: response.role, text: response.text, language: detectLanguage(response.text), completion_state: response.completion_state, first_seen_at: response.first_seen_at, last_updated_at: response.last_updated_at };
     });
     const refs = [...sourceRefs.values()].sort((a, b) => a.display_order - b.display_order);
-    turns.push({ turn_id: rawTurn.turn_id, context_id: rawTurn.context_id, turn_index: rawTurn.turn_index, chat_mode: context?.chat_mode || "unknown", question: rawTurn.prompt ? { text: rawTurn.prompt.text, language: detectLanguage(rawTurn.prompt.text) } : null, responses, search_observation: { status: refs.length ? "observed" : "not_observed", evidence: refs.length ? "displayed_citations_or_links" : "no_displayed_source", source_count: refs.length }, source_refs: refs });
+    turns.push({ turn_id: rawTurn.turn_id, context_id: rawTurn.context_id, conversation_instance_id: rawTurn.conversation_instance_id || null, turn_index: rawTurn.turn_index, chat_mode: context?.chat_mode || "unknown", question: rawTurn.prompt ? { text: rawTurn.prompt.text, language: detectLanguage(rawTurn.prompt.text) } : null, responses, search_observation: { status: refs.length ? "observed" : "not_observed", evidence: refs.length ? "displayed_citations_or_links" : "no_displayed_source", source_count: refs.length }, source_refs: refs });
   }
+
+  const measurementType = raw.measurement?.measurement_type || "legacy_unspecified";
+  const conversations = (raw.conversation_instances || []).map((conversation) => {
+    const conversationTurns = turns.filter((turn) => turn.conversation_instance_id === conversation.conversation_instance_id);
+    if (measurementType === "independent_query" && conversationTurns.filter((turn) => turn.question).length !== 1) warnings.push({ code: "independent_query_turn_count", severity: "warning", conversation_instance_id: conversation.conversation_instance_id, observed_turn_count: conversationTurns.filter((turn) => turn.question).length });
+    return { conversation_instance_id: conversation.conversation_instance_id, started_at: conversation.started_at, ended_at: conversation.ended_at, boundary_source: conversation.boundary_source, chat_modes: conversation.chat_modes || [], context_ids: conversation.context_ids || [], turn_ids: conversationTurns.map((turn) => turn.turn_id), turn_count: conversationTurns.length };
+  });
 
   const sources = [...sourceMap.values()].map((source) => ({ ...source, original_urls: [...source.original_urls], observations: { ...source.observations, turn_ids: [...source.observations.turn_ids] } })).sort((a, b) => a.source_id.localeCompare(b.source_id));
   const byOwnership = {};
@@ -118,10 +127,12 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
   const byOwner = [...byOwnerMap.values()].map((item) => ({ entity_id: item.entity_id, unique_page_count: item.source_ids.size, citation_count: item.citation_count, turn_count: item.turn_ids.size, page_types: item.page_types }));
 
   return {
-    schema_version: "normalized-0.1.0",
-    normalizer: { name: "chatgpt-web-normalizer", version: "0.1.0" },
+    schema_version: "normalized-0.2.0",
+    normalizer: { name: "chatgpt-web-normalizer", version: "0.2.0" },
     provenance: { raw_schema_version: raw.schema_version, observation_id: raw.observation_id, run_id: raw.run_id, source_captured_at: raw.captured_at },
+    measurement: { measurement_type: measurementType, boundary_strategy: raw.measurement?.boundary_strategy || "legacy_inferred" },
     environment: { surface: raw.surface, chat_modes: [...new Set((raw.chat_contexts || []).map((context) => context.chat_mode))], displayed_model: raw.environment?.displayed_model ?? null, displayed_mode: raw.environment?.displayed_mode ?? null, locale: raw.environment?.locale ?? null },
+    conversations,
     turns,
     sources,
     source_summary: { total_unique_sources: sources.length, total_citation_occurrences: sources.reduce((sum, source) => sum + source.observations.citation_count, 0), citation_occurrences_by_ownership: byOwnership, unique_sources_by_ownership: uniqueSourcesByOwnership, by_owner: byOwner },

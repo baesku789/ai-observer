@@ -1,8 +1,8 @@
 (() => {
-  const SCHEMA_VERSION = "0.3.0-draft";
-  const COLLECTOR_VERSION = "0.3.1";
+  const SCHEMA_VERSION = "0.4.0-draft";
+  const COLLECTOR_VERSION = "0.4.0";
   const QUIET_PERIOD_MS = 1500;
-  const state = { measuring: false, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
+  const state = { measuring: false, measurementType: "independent_query", runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
 
   const now = () => new Date().toISOString();
   const makeId = (prefix) => `${prefix}_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
@@ -142,11 +142,35 @@
       }
     }
     state.currentContext = next; state.contexts.push(next); state.baselineKeys = currentNodeKeys();
+    if (state.currentConversation) {
+      if (!state.currentConversation.context_ids.includes(next.context_id)) state.currentConversation.context_ids.push(next.context_id);
+      if (!state.currentConversation.chat_modes.includes(next.chat_mode)) state.currentConversation.chat_modes.push(next.chat_mode);
+    }
     if (previous) state.contextEvents.push({ event_id: makeId("event"), event_type: "chat_context_changed", captured_at: now(), from_context_id: previous.context_id, to_context_id: next.context_id, evidence: { reason, url_changed: previous.conversation_url !== next.conversation_url, mode_changed: previous.chat_mode !== next.chat_mode } });
   }
   function addWarning(code, message) {
     const contextId = state.currentContext?.context_id || null;
     if (!state.warnings.some((warning) => warning.code === code && warning.context_id === contextId)) state.warnings.push({ warning_id: makeId("warning"), code, message, captured_at: now(), context_id: contextId });
+  }
+
+  function openConversation(boundarySource) {
+    if (!state.measuring) return status();
+    const capturedAt = now();
+    const previous = state.currentConversation;
+    if (previous) previous.ended_at = capturedAt;
+    const conversation = {
+      conversation_instance_id: makeId("conversation"),
+      started_at: capturedAt,
+      ended_at: null,
+      boundary_source: boundarySource,
+      context_ids: state.currentContext ? [state.currentContext.context_id] : [],
+      chat_modes: state.currentContext ? [state.currentContext.chat_mode] : []
+    };
+    state.currentConversation = conversation;
+    state.conversations.push(conversation);
+    state.baselineKeys = currentNodeKeys();
+    if (previous) state.conversationEvents.push({ event_id: makeId("event"), event_type: "conversation_boundary_confirmed", captured_at: capturedAt, from_conversation_instance_id: previous.conversation_instance_id, to_conversation_instance_id: conversation.conversation_instance_id, boundary_source: boundarySource });
+    return status();
   }
 
   function scan() {
@@ -166,17 +190,18 @@
       const controls = role === "assistant" && node === latestAssistant ? responseControls() : { stop_control_visible: false, stop_control_text: null };
       const citationCandidates = citationsFrom(node);
       const completionState = role !== "assistant" ? null : quietForMs >= QUIET_PERIOD_MS && !controls.stop_control_visible ? "quiet_candidate" : "streaming_or_unsettled";
-      state.records.set(recordKey, { candidate_id: existing?.candidate_id || makeId("candidate"), context_id: state.currentContext.context_id, role, text, html: safeHtml(node), first_seen_at: existing?.first_seen_at || capturedAt, last_updated_at: textChanged ? capturedAt : existing.last_updated_at, last_text_changed_at: lastTextChangedAt, completion_state: completionState, completion_evidence: role === "assistant" ? { text_quiet_for_ms: quietForMs, required_quiet_period_ms: QUIET_PERIOD_MS, ...controls } : null, link_candidates: linksFrom(node), citation_candidates: citationCandidates, citation_groups: citationGroupsFrom(citationCandidates) });
+      state.records.set(recordKey, { candidate_id: existing?.candidate_id || makeId("candidate"), context_id: state.currentContext.context_id, conversation_instance_id: existing?.conversation_instance_id || state.currentConversation?.conversation_instance_id || null, role, text, html: safeHtml(node), first_seen_at: existing?.first_seen_at || capturedAt, last_updated_at: textChanged ? capturedAt : existing.last_updated_at, last_text_changed_at: lastTextChangedAt, completion_state: completionState, completion_evidence: role === "assistant" ? { text_quiet_for_ms: quietForMs, required_quiet_period_ms: QUIET_PERIOD_MS, ...controls } : null, link_candidates: linksFrom(node), citation_candidates: citationCandidates, citation_groups: citationGroupsFrom(citationCandidates) });
     }
   }
   function scheduleScan() {
     clearTimeout(state.scanTimer); clearTimeout(state.quietTimer);
     state.scanTimer = setTimeout(scan, 250); state.quietTimer = setTimeout(scan, QUIET_PERIOD_MS + 50);
   }
-  function start() {
+  function start(measurementType = "independent_query") {
     if (state.measuring) return status();
-    Object.assign(state, { measuring: true, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null });
-    state.records.clear(); openContext("measurement_started", true);
+    if (!["independent_query", "conversation_journey"].includes(measurementType)) throw new Error("지원하지 않는 측정 유형입니다.");
+    Object.assign(state, { measuring: true, measurementType, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null });
+    state.records.clear(); openContext("measurement_started", true); openConversation("measurement_started");
     state.observer = new MutationObserver(scheduleScan);
     state.observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["href", "aria-label", "data-testid", "data-citation"] });
     state.contextTimer = setInterval(scan, 1000);
@@ -184,20 +209,22 @@
   }
   function stop() {
     scan(); state.measuring = false; state.endedAt = now(); if (state.currentContext) state.currentContext.last_seen_at = state.endedAt;
+    if (state.currentConversation) state.currentConversation.ended_at = state.endedAt;
     state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); clearInterval(state.contextTimer); state.contextTimer = null; return status();
   }
   function status() {
-    return { measuring: state.measuring, run_id: state.runId, started_at: state.startedAt, candidate_count: state.records.size, context_count: state.contexts.length, chat_mode: state.currentContext?.chat_mode || null, warning_count: state.warnings.length };
+    return { measuring: state.measuring, measurement_type: state.measurementType, run_id: state.runId, started_at: state.startedAt, candidate_count: state.records.size, context_count: state.contexts.length, conversation_count: state.conversations.length, conversation_instance_id: state.currentConversation?.conversation_instance_id || null, chat_mode: state.currentContext?.chat_mode || null, warning_count: state.warnings.length };
   }
   function buildTurns() {
-    const turns = []; const currentByContext = new Map();
+    const turns = []; const currentByConversation = new Map();
     for (const candidate of state.records.values()) {
-      let current = currentByContext.get(candidate.context_id);
+      const groupingId = candidate.conversation_instance_id || candidate.context_id;
+      let current = currentByConversation.get(groupingId);
       if (candidate.role === "user") {
-        current = { turn_id: makeId("turn"), context_id: candidate.context_id, turn_index: turns.filter((turn) => turn.context_id === candidate.context_id).length + 1, first_seen_at: candidate.first_seen_at, prompt: candidate, response_candidates: [] };
-        turns.push(current); currentByContext.set(candidate.context_id, current);
+        current = { turn_id: makeId("turn"), context_id: candidate.context_id, conversation_instance_id: candidate.conversation_instance_id, turn_index: turns.filter((turn) => (turn.conversation_instance_id || turn.context_id) === groupingId).length + 1, first_seen_at: candidate.first_seen_at, prompt: candidate, response_candidates: [] };
+        turns.push(current); currentByConversation.set(groupingId, current);
       } else if (current) current.response_candidates.push(candidate);
-      else { current = { turn_id: makeId("turn"), context_id: candidate.context_id, turn_index: turns.filter((turn) => turn.context_id === candidate.context_id).length + 1, first_seen_at: candidate.first_seen_at, prompt: null, response_candidates: [candidate] }; turns.push(current); currentByContext.set(candidate.context_id, current); }
+      else { current = { turn_id: makeId("turn"), context_id: candidate.context_id, conversation_instance_id: candidate.conversation_instance_id, turn_index: turns.filter((turn) => (turn.conversation_instance_id || turn.context_id) === groupingId).length + 1, first_seen_at: candidate.first_seen_at, prompt: null, response_candidates: [candidate] }; turns.push(current); currentByConversation.set(groupingId, current); }
     }
     return turns;
   }
@@ -205,14 +232,22 @@
     scan(); const capturedAt = now(); const model = displayedModelEvidence(); const mode = displayedModeEvidence();
     if (!model) addWarning("displayed_model_not_found", "표시된 모델을 확인하지 못했습니다. UI 후보 증거를 확인하세요.");
     if (!mode) addWarning("displayed_mode_not_found", "표시된 응답 모드를 확인하지 못했습니다. UI 후보 증거를 확인하세요.");
-    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, displayed_model: model?.value || null, displayed_model_evidence: model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: buildTurns(), capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
+    const turns = buildTurns();
+    if (state.measurementType === "independent_query") {
+      for (const conversation of state.conversations) {
+        const count = turns.filter((turn) => turn.conversation_instance_id === conversation.conversation_instance_id && turn.prompt).length;
+        if (count !== 1 && !state.warnings.some((warning) => warning.code === "independent_query_turn_count" && warning.conversation_instance_id === conversation.conversation_instance_id)) state.warnings.push({ warning_id: makeId("warning"), code: "independent_query_turn_count", message: `독립 질문 대화에는 질문이 1개여야 하지만 ${count}개가 수집됐습니다.`, captured_at: capturedAt, conversation_instance_id: conversation.conversation_instance_id, observed_turn_count: count });
+      }
+    }
+    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, measurement: { measurement_type: state.measurementType, boundary_strategy: "user_confirmed" }, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, displayed_model: model?.value || null, displayed_model_evidence: model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, conversation_instances: state.conversations, conversation_events: state.conversationEvents, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: turns, capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
   }
 
   window.addEventListener("popstate", () => { if (state.measuring) setTimeout(scan, 100); });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
-      if (message?.type === "observer:start") sendResponse({ ok: true, data: start() });
+      if (message?.type === "observer:start") sendResponse({ ok: true, data: start(message.measurement_type) });
+      else if (message?.type === "observer:new-conversation") sendResponse({ ok: true, data: openConversation("user_confirmed") });
       else if (message?.type === "observer:stop") sendResponse({ ok: true, data: stop() });
       else if (message?.type === "observer:status") sendResponse({ ok: true, data: status() });
       else if (message?.type === "observer:export") sendResponse({ ok: true, data: observation() });
