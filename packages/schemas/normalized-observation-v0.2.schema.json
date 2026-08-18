@@ -19,7 +19,7 @@
   "$defs": {
     "conversation": {
       "type": "object",
-      "required": ["conversation_instance_id", "boundary_source", "turn_ids", "turn_count"]
+      "required": ["conversation_instance_id", "boundary_source", "setup_chat_modes", "effective_chat_mode", "turn_chat_modes", "turn_ids", "turn_count"]
     },
     "turn": {
       "type": "object",

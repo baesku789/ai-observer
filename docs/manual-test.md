@@ -19,6 +19,7 @@ Chrome 웹 UI는 수시로 바뀔 수 있으므로 릴리스 전 아래 항목�
 - 새 임시 채팅에서 **새 대화로 분리**를 누르면 `conversation_instance_id`가 바뀐다.
 - 독립 질문 대화에 질문이 두 개 이상이면 `independent_query_turn_count` 경고가 생긴다.
 - 연속 대화에서는 여러 turn이 하나의 `conversation_instance_id`에 연결된다.
+- 새 채팅의 `regular → temporary` 전환은 별도 대화가 아니라 질문 전 설정 이력으로 남고, 질문 시점의 실질 모드는 `temporary`가 된다.
 
 ## 탐사 케이스
 

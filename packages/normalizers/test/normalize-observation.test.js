@@ -70,6 +70,8 @@ test("Collector 0.4 대화 경계를 보존하고 독립 질문을 검증한다"
   const result = normalizeObservation(modern);
   assert.equal(result.measurement.measurement_type, "independent_query");
   assert.equal(result.conversations[0].turn_count, 1);
+  assert.equal(result.conversations[0].effective_chat_mode, "temporary");
+  assert.deepEqual(result.conversations[0].turn_chat_modes, ["temporary"]);
   assert.equal(result.turns[0].conversation_instance_id, "conversation_1");
   assert.equal(result.normalization_warnings.some((warning) => warning.code === "independent_query_turn_count"), false);
 });

@@ -108,8 +108,10 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
   const measurementType = raw.measurement?.measurement_type || "legacy_unspecified";
   const conversations = (raw.conversation_instances || []).map((conversation) => {
     const conversationTurns = turns.filter((turn) => turn.conversation_instance_id === conversation.conversation_instance_id);
+    const turnChatModes = [...new Set(conversationTurns.map((turn) => turn.chat_mode).filter(Boolean))];
+    const effectiveChatMode = turnChatModes.length === 1 ? turnChatModes[0] : turnChatModes.length > 1 ? "mixed" : null;
     if (measurementType === "independent_query" && conversationTurns.filter((turn) => turn.question).length !== 1) warnings.push({ code: "independent_query_turn_count", severity: "warning", conversation_instance_id: conversation.conversation_instance_id, observed_turn_count: conversationTurns.filter((turn) => turn.question).length });
-    return { conversation_instance_id: conversation.conversation_instance_id, started_at: conversation.started_at, ended_at: conversation.ended_at, boundary_source: conversation.boundary_source, chat_modes: conversation.chat_modes || [], context_ids: conversation.context_ids || [], turn_ids: conversationTurns.map((turn) => turn.turn_id), turn_count: conversationTurns.length };
+    return { conversation_instance_id: conversation.conversation_instance_id, started_at: conversation.started_at, ended_at: conversation.ended_at, boundary_source: conversation.boundary_source, setup_chat_modes: conversation.chat_modes || [], effective_chat_mode: effectiveChatMode, turn_chat_modes: turnChatModes, context_ids: conversation.context_ids || [], turn_ids: conversationTurns.map((turn) => turn.turn_id), turn_count: conversationTurns.length };
   });
 
   const sources = [...sourceMap.values()].map((source) => ({ ...source, original_urls: [...source.original_urls], observations: { ...source.observations, turn_ids: [...source.observations.turn_ids] } })).sort((a, b) => a.source_id.localeCompare(b.source_id));
