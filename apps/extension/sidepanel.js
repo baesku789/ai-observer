@@ -83,7 +83,7 @@ function renderRunner() {
   elements.queryText.textContent = query.expected_prompt;
   elements.queryMeta.textContent = visible.isNext ? `바로 복사할 수 있습니다 · 반복 ${query.repetition}회차` : `반복 ${query.repetition}회차`;
   const active = Boolean(latestStatus?.measuring);
-  elements.nextQuery.disabled = !active || runner.index >= runner.runs.length - 1 || !latestStatus?.current_conversation_complete;
+  elements.nextQuery.disabled = !active || runner.index >= runner.runs.length - 1 || !latestStatus?.current_conversation_prompt_count;
   elements.copyQuery.disabled = visible.isLastSent;
   elements.prepareQueryList.disabled = active;
   elements.loadQuerySet.disabled = active;
@@ -181,8 +181,8 @@ elements.start.addEventListener("click", async () => {
 
 elements.nextQuery.addEventListener("click", async () => {
   if (!runner || runner.index >= runner.runs.length - 1) return;
-  if (!latestStatus?.current_conversation_complete) {
-    showMessage("현재 답변이 끝난 뒤 다음 측정을 시작할 수 있습니다.");
+  if (!latestStatus?.current_conversation_prompt_count) {
+    showMessage("현재 질문을 ChatGPT에 먼저 전송해 주세요.");
     return;
   }
   const previousIndex = runner.index;
