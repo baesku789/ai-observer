@@ -17,19 +17,19 @@ export function expandQuerySet(definition) {
 
 export function createQuerySetFromText(text, repetitions = 1, querySetId = `manual_${Date.now()}`) {
   const prompts = String(text || "").split(/\r?\n/).map((prompt) => prompt.trim()).filter(Boolean);
-  if (!prompts.length) throw new Error("질문을 한 줄에 하나씩 입력해 주세요.");
+  return createQuerySetFromPrompts(prompts, repetitions, querySetId);
+}
+
+export function createQuerySetFromPrompts(prompts, repetitions = 1, querySetId = `manual_${Date.now()}`) {
+  const normalizedPrompts = Array.isArray(prompts) ? prompts.map((prompt) => String(prompt || "").trim()).filter(Boolean) : [];
+  if (!normalizedPrompts.length) throw new Error("질문을 한 개 이상 입력해 주세요.");
   const repeatCount = Number(repetitions);
   if (!Number.isInteger(repeatCount) || repeatCount < 1 || repeatCount > 20) throw new Error("반복 횟수는 1~20 사이여야 합니다.");
   return {
     query_set_id: querySetId,
     version: "manual-1",
-    queries: prompts.map((prompt, index) => ({ query_id: `q_${String(index + 1).padStart(3, "0")}`, text: prompt, category: "uncategorized", repetitions: repeatCount }))
+    queries: normalizedPrompts.map((prompt, index) => ({ query_id: `q_${String(index + 1).padStart(3, "0")}`, text: prompt, category: "uncategorized", repetitions: repeatCount }))
   };
-}
-
-export function visibleRunIndex(currentIndex, totalRuns, promptCaptured) {
-  if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= totalRuns) return null;
-  return promptCaptured && currentIndex < totalRuns - 1 ? currentIndex + 1 : currentIndex;
 }
 
 export function querySetMetadata(definition, totalRuns) {

@@ -1,10 +1,11 @@
 (() => {
-  const SCHEMA_VERSION = "0.5.0-draft";
-  const COLLECTOR_VERSION = "0.5.0";
+  const SCHEMA_VERSION = "0.6.0-draft";
+  const COLLECTOR_VERSION = "0.6.0";
   const QUIET_PERIOD_MS = 1500;
-  const state = { measuring: false, measurementType: "independent_query", querySet: null, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
+  const state = { measuring: false, measurementType: "independent_query", querySet: null, queryRuns: [], activeRunIndex: null, desiredChatMode: "temporary", ownerTabId: null, revision: 0, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
 
   const now = () => new Date().toISOString();
+  const touch = () => { state.revision += 1; };
   const makeId = (prefix) => `${prefix}_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
   const textOf = (node) => (node?.innerText || node?.textContent || "").replace(/\s+/g, " ").trim();
   const hashText = (value) => {
@@ -153,7 +154,7 @@
     if (!state.warnings.some((warning) => warning.code === code && warning.context_id === contextId)) state.warnings.push({ warning_id: makeId("warning"), code, message, captured_at: now(), context_id: contextId });
   }
 
-  function openConversation(boundarySource, queryMetadata = null) {
+  function openConversation(boundarySource, queryMetadata = null, runIndex = null) {
     if (!state.measuring) return status();
     const capturedAt = now();
     const previous = state.currentConversation;
@@ -164,22 +165,39 @@
       ended_at: null,
       boundary_source: boundarySource,
       query: queryMetadata,
+      run_index: runIndex,
+      manual_completion: null,
       context_ids: state.currentContext ? [state.currentContext.context_id] : [],
       chat_modes: state.currentContext ? [state.currentContext.chat_mode] : []
     };
     state.currentConversation = conversation;
+    if (Number.isInteger(runIndex)) state.activeRunIndex = runIndex;
     state.conversations.push(conversation);
     state.baselineKeys = currentNodeKeys();
     if (previous) state.conversationEvents.push({ event_id: makeId("event"), event_type: "conversation_boundary_confirmed", captured_at: capturedAt, from_conversation_instance_id: previous.conversation_instance_id, to_conversation_instance_id: conversation.conversation_instance_id, boundary_source: boundarySource });
+    touch();
     return status();
+  }
+
+  function confirmNewChat() {
+    if (!state.measuring) throw new Error("먼저 측정을 시작하세요.");
+    if (state.measurementType !== "independent_query") return openConversation("user_confirmed_new_chat");
+    const currentStatus = status();
+    if (currentStatus.phase !== "awaiting_new_chat") throw new Error("지금은 새 채팅을 확인할 단계가 아닙니다.");
+    if (messageNodes().some((node) => textOf(node))) throw new Error("현재 탭에서 새 채팅을 먼저 열어 대화 화면을 비워 주세요.");
+    const nextIndex = state.activeRunIndex === null ? 0 : state.activeRunIndex + 1;
+    if (nextIndex >= state.queryRuns.length) throw new Error("모든 질문 측정이 완료되었습니다.");
+    return openConversation("user_confirmed_new_chat", state.queryRuns[nextIndex], nextIndex);
   }
 
   function scan() {
     if (!state.measuring) return;
     if (!state.currentContext || state.currentContext.signature !== contextSignature()) openContext("url_or_mode_changed");
     if (state.currentContext) state.currentContext.last_seen_at = now();
+    if (state.measurementType === "independent_query" && !state.currentConversation) return;
     const nodes = messageNodes();
     const latestAssistant = [...nodes].reverse().find((node) => roleOf(node) === "assistant") || null;
+    let changed = false;
     for (const [index, node] of nodes.entries()) {
       const key = nodeKey(node, index); if (state.baselineKeys.has(key)) continue;
       const text = textOf(node); if (!text) continue;
@@ -192,17 +210,22 @@
       const citationCandidates = citationsFrom(node);
       const completionState = role !== "assistant" ? null : quietForMs >= QUIET_PERIOD_MS && !controls.stop_control_visible ? "quiet_candidate" : "streaming_or_unsettled";
       state.records.set(recordKey, { candidate_id: existing?.candidate_id || makeId("candidate"), context_id: state.currentContext.context_id, conversation_instance_id: existing?.conversation_instance_id || state.currentConversation?.conversation_instance_id || null, role, text, html: safeHtml(node), first_seen_at: existing?.first_seen_at || capturedAt, last_updated_at: textChanged ? capturedAt : existing.last_updated_at, last_text_changed_at: lastTextChangedAt, completion_state: completionState, completion_evidence: role === "assistant" ? { text_quiet_for_ms: quietForMs, required_quiet_period_ms: QUIET_PERIOD_MS, ...controls } : null, link_candidates: linksFrom(node), citation_candidates: citationCandidates, citation_groups: citationGroupsFrom(citationCandidates) });
+      if (!existing || textChanged || existing.completion_state !== completionState) changed = true;
     }
+    if (changed) touch();
   }
   function scheduleScan() {
     clearTimeout(state.scanTimer); clearTimeout(state.quietTimer);
     state.scanTimer = setTimeout(scan, 250); state.quietTimer = setTimeout(scan, QUIET_PERIOD_MS + 50);
   }
-  function start(measurementType = "independent_query", queryMetadata = null, querySet = null) {
+  function start(measurementType = "independent_query", querySet = null, queryRuns = [], desiredChatMode = "temporary", ownerTabId = null) {
     if (state.measuring) return status();
     if (!["independent_query", "conversation_journey"].includes(measurementType)) throw new Error("지원하지 않는 측정 유형입니다.");
-    Object.assign(state, { measuring: true, measurementType, querySet, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null });
-    state.records.clear(); openContext("measurement_started", true); openConversation("measurement_started", queryMetadata);
+    if (measurementType === "independent_query" && !queryRuns.length) throw new Error("측정할 질문을 한 개 이상 입력하세요.");
+    if (!["temporary", "regular"].includes(desiredChatMode)) throw new Error("지원하지 않는 채팅 모드입니다.");
+    Object.assign(state, { measuring: true, measurementType, querySet, queryRuns, activeRunIndex: null, desiredChatMode, ownerTabId, revision: state.revision + 1, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null });
+    state.records.clear(); openContext("measurement_started", true);
+    if (measurementType === "conversation_journey") openConversation("measurement_started");
     state.observer = new MutationObserver(scheduleScan);
     state.observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["href", "aria-label", "data-testid", "data-citation"] });
     state.contextTimer = setInterval(scan, 1000);
@@ -211,14 +234,64 @@
   function stop() {
     scan(); state.measuring = false; state.endedAt = now(); if (state.currentContext) state.currentContext.last_seen_at = state.endedAt;
     if (state.currentConversation) state.currentConversation.ended_at = state.endedAt;
-    state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); clearInterval(state.contextTimer); state.contextTimer = null; return status();
+    state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); clearInterval(state.contextTimer); state.contextTimer = null; touch(); return status();
+  }
+  function markResponseComplete() {
+    if (!state.measuring || !state.currentConversation) throw new Error("완료로 표시할 답변이 없습니다.");
+    const conversationId = state.currentConversation.conversation_instance_id;
+    const currentRecords = [...state.records.values()].filter((record) => record.conversation_instance_id === conversationId);
+    if (!currentRecords.some((record) => record.role === "user")) throw new Error("먼저 질문을 입력하세요.");
+    state.currentConversation.manual_completion = { completed_at: now(), source: "user_confirmed" };
+    touch();
+    return status();
   }
   function status() {
     const conversationId = state.currentConversation?.conversation_instance_id || null;
     const currentRecords = [...state.records.values()].filter((record) => record.conversation_instance_id === conversationId);
     const promptCount = currentRecords.filter((record) => record.role === "user").length;
     const latestResponse = currentRecords.filter((record) => record.role === "assistant").at(-1) || null;
-    return { measuring: state.measuring, measurement_type: state.measurementType, run_id: state.runId, started_at: state.startedAt, candidate_count: state.records.size, context_count: state.contexts.length, conversation_count: state.conversations.length, conversation_instance_id: conversationId, current_query: state.currentConversation?.query || null, current_conversation_prompt_count: promptCount, current_conversation_response_state: latestResponse?.completion_state || null, current_conversation_complete: latestResponse?.completion_state === "quiet_candidate", chat_mode: state.currentContext?.chat_mode || null, warning_count: state.warnings.length };
+    const manuallyComplete = Boolean(state.currentConversation?.manual_completion);
+    const responseComplete = manuallyComplete || latestResponse?.completion_state === "quiet_candidate";
+    let phase = "idle";
+    if (!state.measuring && state.runId) phase = "stopped";
+    else if (state.measuring && state.measurementType === "conversation_journey") phase = responseComplete ? "response_complete" : promptCount ? "collecting_response" : "ready_to_send";
+    else if (state.measuring && !state.currentConversation) phase = "awaiting_new_chat";
+    else if (state.measuring && promptCount === 0 && state.currentContext?.chat_mode !== state.desiredChatMode) phase = "awaiting_chat_mode";
+    else if (state.measuring && promptCount === 0) phase = "ready_to_send";
+    else if (state.measuring && !responseComplete) phase = "collecting_response";
+    else if (state.measuring && state.activeRunIndex >= state.queryRuns.length - 1) phase = "completed";
+    else if (state.measuring) phase = "awaiting_new_chat";
+    const nextRunIndex = state.activeRunIndex === null ? 0 : responseComplete ? state.activeRunIndex + 1 : null;
+    const allRecords = [...state.records.values()];
+    return {
+      measuring: state.measuring,
+      phase,
+      revision: state.revision,
+      collector_version: COLLECTOR_VERSION,
+      measurement_type: state.measurementType,
+      run_id: state.runId,
+      started_at: state.startedAt,
+      owner_tab_id: state.ownerTabId,
+      tab_scope: "single_tab",
+      desired_chat_mode: state.desiredChatMode,
+      chat_mode: state.currentContext?.chat_mode || null,
+      active_run_index: state.activeRunIndex,
+      next_run_index: nextRunIndex < state.queryRuns.length ? nextRunIndex : null,
+      total_runs: state.queryRuns.length,
+      active_query: Number.isInteger(state.activeRunIndex) ? state.queryRuns[state.activeRunIndex] : null,
+      next_query: Number.isInteger(nextRunIndex) && nextRunIndex < state.queryRuns.length ? state.queryRuns[nextRunIndex] : null,
+      question_count: allRecords.filter((record) => record.role === "user").length,
+      answer_count: allRecords.filter((record) => record.role === "assistant").length,
+      conversation_count: state.conversations.length,
+      conversation_instance_id: conversationId,
+      current_query: state.currentConversation?.query || null,
+      current_conversation_prompt_count: promptCount,
+      current_conversation_response_state: latestResponse?.completion_state || null,
+      current_conversation_complete: responseComplete,
+      completion_source: manuallyComplete ? "user_confirmed" : responseComplete ? "collector_quiet_period" : null,
+      assistant_response_seen: Boolean(latestResponse),
+      warning_count: state.warnings.length
+    };
   }
   function buildTurns() {
     const turns = []; const currentByConversation = new Map();
@@ -252,15 +325,16 @@
         if (conversation.query?.prompt_match === "mismatch" && !state.warnings.some((warning) => warning.code === "query_prompt_mismatch" && warning.conversation_instance_id === conversation.conversation_instance_id)) state.warnings.push({ warning_id: makeId("warning"), code: "query_prompt_mismatch", message: "질문 세트의 예상 질문과 실제 질문이 다릅니다.", captured_at: capturedAt, conversation_instance_id: conversation.conversation_instance_id, query_id: conversation.query.query_id, expected_prompt: conversation.query.expected_prompt, observed_prompt: conversation.query.observed_prompt });
       }
     }
-    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, measurement: { measurement_type: state.measurementType, boundary_strategy: "user_confirmed", query_set: state.querySet }, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, displayed_model: model?.value || null, displayed_model_evidence: model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, conversation_instances: serializedConversations, conversation_events: state.conversationEvents, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: turns, capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
+    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, measurement: { measurement_type: state.measurementType, boundary_strategy: "user_confirmed_new_chat", tab_scope: "single_tab", desired_chat_mode: state.desiredChatMode, query_set: state.querySet }, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, displayed_model: model?.value || null, displayed_model_evidence: model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, conversation_instances: serializedConversations, conversation_events: state.conversationEvents, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: turns, capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
   }
 
   window.addEventListener("popstate", () => { if (state.measuring) setTimeout(scan, 100); });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
-      if (message?.type === "observer:start") sendResponse({ ok: true, data: start(message.measurement_type, message.query_metadata, message.query_set) });
-      else if (message?.type === "observer:new-conversation") sendResponse({ ok: true, data: openConversation("user_confirmed", message.query_metadata) });
+      if (message?.type === "observer:start") sendResponse({ ok: true, data: start(message.measurement_type, message.query_set, message.query_runs, message.desired_chat_mode, message.owner_tab_id) });
+      else if (message?.type === "observer:confirm-new-chat" || message?.type === "observer:new-conversation") sendResponse({ ok: true, data: confirmNewChat() });
+      else if (message?.type === "observer:mark-response-complete") sendResponse({ ok: true, data: markResponseComplete() });
       else if (message?.type === "observer:stop") sendResponse({ ok: true, data: stop() });
       else if (message?.type === "observer:status") sendResponse({ ok: true, data: status() });
       else if (message?.type === "observer:export") sendResponse({ ok: true, data: observation() });

@@ -1,6 +1,6 @@
 # 데이터 계약 초안
 
-상태: `0.5.0-draft / 질문 세트 실행 메타데이터 반영`
+상태: `0.6.0-draft / 단일 탭 질문 실행 상태 반영`
 
 이 문서는 구현 방향을 맞추기 위한 가설 계약이다. ChatGPT 웹 탐사 결과에 따라 필드가 추가·삭제·변경될 수 있다.
 
@@ -36,20 +36,22 @@ UserInput
 - `target`: 필수
 - `competitors`: 선택
 - `measurement.importance`: 선택, 기본값 3
-- 질문 텍스트는 ChatGPT 화면에서 자동수집하므로 별도 사전 입력을 요구하지 않는다.
+- 독립 질문 측정에서는 실행 순서와 일치 검증을 위해 질문 세트를 사전 입력하고, 실제 전송된 질문도 ChatGPT 화면에서 별도로 수집한다.
 
 ## 시스템 자동수집 원본
 
 ```json
 {
-  "schema_version": "0.5.0-draft",
+  "schema_version": "0.6.0-draft",
   "observation_id": "obs_example",
   "run_id": "run_example",
   "surface": "chatgpt_web",
   "captured_at": "2026-08-14T00:00:00+09:00",
   "measurement": {
     "measurement_type": "independent_query",
-    "boundary_strategy": "user_confirmed",
+    "boundary_strategy": "user_confirmed_new_chat",
+    "tab_scope": "single_tab",
+    "desired_chat_mode": "temporary",
     "query_set": {
       "query_set_id": "clinic-discovery-ko-v1",
       "version": "1.0.0",
@@ -70,7 +72,9 @@ UserInput
   "conversation_instances": [
     {
       "conversation_instance_id": "conversation_example",
-      "boundary_source": "measurement_started",
+      "boundary_source": "user_confirmed_new_chat",
+      "run_index": 0,
+      "manual_completion": null,
       "query": {
         "query_set_id": "clinic-discovery-ko-v1",
         "query_id": "recommend-local-clinic",
@@ -106,7 +110,7 @@ UserInput
   "capture_warnings": [],
   "collector": {
     "name": "chatgpt-web",
-    "version": "0.0.1"
+    "version": "0.6.0"
   }
 }
 ```
@@ -117,7 +121,7 @@ UserInput
 
 응답의 `citation_candidates`는 DOM 증거를 보존하므로 pill과 link가 함께 들어갈 수 있다. 정량 집계에는 정규 URL과 후보 ID를 묶은 `citation_groups`를 사용한다. 완료 후보는 페이지 전체가 아니라 응답별 `last_text_changed_at`, 텍스트 휴지 시간, 중지 버튼 표시 여부로 판정한다. 모델과 응답 모드는 값과 함께 선택자·라벨·HTML 증거를 저장하며 감지 실패 시 헤더와 입력 영역의 `ui_label_candidates`를 탐사 증거로 남긴다.
 
-임시 채팅은 안정적인 대화 ID가 노출되지 않으므로 사용자가 사이드패널의 `새 대화로 분리`를 눌러 경계를 확정한다. Collector는 각 경계에 `conversation_instance_id`를 만들고 모든 turn을 연결한다. `independent_query`에서는 대화당 질문 1개를 요구하고, `conversation_journey`에서는 여러 turn을 허용한다.
+임시 채팅은 안정적인 대화 ID가 노출되지 않으므로 사용자가 같은 탭에서 새 채팅을 연 뒤 사이드패널의 `새 채팅 열었어요`를 눌러 경계를 확정한다. Collector는 각 경계에 `conversation_instance_id`를 만들고 모든 turn을 연결한다. `tab_scope: single_tab`은 측정 중 다른 탭의 데이터를 섞지 않는다는 뜻이다. `independent_query`에서는 대화당 질문 1개를 요구하고, `conversation_journey`에서는 여러 turn을 허용한다.
 
 질문 세트는 `query_set_id`와 고유한 `query_id`를 가지며 `repetitions`를 실행 단위로 펼친다. Collector는 사용자가 현재 실행으로 선택한 질문 메타데이터를 대화 경계에 고정하고, 첫 실제 prompt를 `observed_prompt`로 보존한다. `prompt_match`는 `exact | normalized | mismatch | unavailable`이며, 불일치는 원본과 정규화 경고에 모두 남긴다. Normalizer는 이 메타데이터를 대화와 각 turn에 그대로 전달하며 질문의 의미를 추론하거나 재분류하지 않는다.
 

@@ -1,251 +1,321 @@
-import { createQuerySetFromText, expandQuerySet, querySetMetadata as buildQuerySetMetadata, visibleRunIndex } from "./query-set.js";
+import { createQuerySetFromPrompts, expandQuerySet, querySetMetadata } from "./query-set.js";
 
-const elements = {
-  start: document.querySelector("#start"),
-  newConversation: document.querySelector("#new-conversation"),
-  stop: document.querySelector("#stop"),
-  export: document.querySelector("#export"),
-  measurementType: document.querySelector("#measurement-type"),
-  dot: document.querySelector("#status-dot"),
-  label: document.querySelector("#status-label"),
-  detail: document.querySelector("#status-detail"),
-  message: document.querySelector("#message"),
-  runnerFeedback: document.querySelector("#runner-feedback"),
-  queryListInput: document.querySelector("#query-list-input"),
-  queryRepetitions: document.querySelector("#query-repetitions"),
-  prepareQueryList: document.querySelector("#prepare-query-list"),
-  querySetInput: document.querySelector("#query-set-input"),
-  loadQuerySet: document.querySelector("#load-query-set"),
-  clearQuerySet: document.querySelector("#clear-query-set"),
-  queryCard: document.querySelector("#query-card"),
-  queryProgress: document.querySelector("#query-progress"),
-  queryText: document.querySelector("#query-text"),
-  queryMeta: document.querySelector("#query-meta"),
-  copyQuery: document.querySelector("#copy-query"),
-  nextQuery: document.querySelector("#next-query")
-};
+const COLLECTOR_VERSION = "0.6.0";
+
+const elements = Object.fromEntries([
+  "start", "stop", "export", "measurement-type", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
+  "query-set-input", "load-query-set", "status-dot", "status-label", "status-detail", "message", "setup", "independent-settings",
+  "workflow", "workflow-step", "workflow-title", "workflow-instruction", "workflow-query", "query-progress", "query-text", "copy-query",
+  "confirm-new-chat", "mark-complete", "finish-measurement", "tab-warning", "return-to-tab", "results"
+].map((id) => [id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), document.querySelector(`#${id}`)]));
 
 let runner = null;
-let latestStatus = null;
-let lastAnnouncedVisibleIndex = null;
+let runnerDirty = false;
+let measurementSession = null;
+let activeTabId = null;
 const buttonTimers = new WeakMap();
 
 async function activeChatGptTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !tab.url?.startsWith("https://chatgpt.com/")) throw new Error("현재 창에서 chatgpt.com 탭을 선택해 주세요.");
+  activeTabId = tab?.id || null;
+  if (!tab?.id || !tab.url?.startsWith("https://chatgpt.com/")) throw new Error("ChatGPT 탭을 선택해 주세요.");
   return tab;
 }
 
-async function request(type, payload = {}) {
-  const tab = await activeChatGptTab();
+async function ownerTab() {
+  if (!measurementSession?.ownerTabId) return activeChatGptTab();
+  try {
+    const tab = await chrome.tabs.get(measurementSession.ownerTabId);
+    if (!tab?.url?.startsWith("https://chatgpt.com/")) throw new Error();
+    return tab;
+  } catch (_) {
+    throw new Error("측정을 시작한 ChatGPT 탭이 닫혔습니다.");
+  }
+}
+
+async function send(tab, type, payload = {}) {
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type, ...payload });
     if (!response?.ok) throw new Error(response?.error || "수집기 요청에 실패했습니다.");
     return response.data;
   } catch (error) {
-    if (String(error).includes("Receiving end does not exist")) throw new Error("확장 프로그램 설치 전에 열린 ChatGPT 탭입니다. 탭을 새로고침해 주세요.");
+    if (String(error).includes("Receiving end does not exist")) throw new Error("ChatGPT 탭을 새로고침해 주세요.");
     throw error;
   }
 }
 
-function currentQuery() {
-  return runner?.runs[runner.index] || null;
+async function request(type, payload = {}) {
+  return send(await ownerTab(), type, payload);
 }
 
-function visibleQueryState() {
-  if (!runner) return { query: null, index: null, isNext: false, isLastSent: false };
-  const promptCaptured = Boolean(latestStatus?.current_conversation_prompt_count);
-  const index = visibleRunIndex(runner.index, runner.runs.length, promptCaptured);
-  return { query: index === null ? null : runner.runs[index], index, isNext: index !== runner.index, isLastSent: promptCaptured && runner.index === runner.runs.length - 1 };
-}
-
-function querySetMetadata() {
-  if (!runner) return null;
-  return buildQuerySetMetadata(runner.definition, runner.runs.length);
+async function saveSession(session) {
+  measurementSession = session;
+  if (session) await chrome.storage.session.set({ measurementSession: session });
+  else await chrome.storage.session.remove("measurementSession");
 }
 
 async function saveRunner() {
   if (runner) await chrome.storage.local.set({ queryRunner: runner });
-  else await chrome.storage.local.remove("queryRunner");
 }
 
-function showRunnerFeedback(message, type = "neutral") {
-  elements.runnerFeedback.classList.toggle("success", type === "success");
-  elements.runnerFeedback.classList.toggle("error", type === "error");
-  elements.runnerFeedback.textContent = message;
-}
-
-function flashButton(button, label, duration = 1600) {
-  clearTimeout(buttonTimers.get(button));
-  const originalLabel = button.dataset.defaultLabel || button.textContent;
-  button.dataset.defaultLabel = originalLabel;
-  button.textContent = label;
-  button.classList.add("confirmed");
-  const timer = setTimeout(() => {
-    button.textContent = originalLabel;
-    button.classList.remove("confirmed");
-    buttonTimers.delete(button);
-  }, duration);
-  buttonTimers.set(button, timer);
-}
-
-async function setRunner(definition, sourceButton = elements.prepareQueryList) {
-  runner = { definition, runs: expandQuerySet(definition), index: 0 };
-  lastAnnouncedVisibleIndex = 0;
-  elements.measurementType.value = "independent_query";
-  await saveRunner();
-  renderRunner();
-  flashButton(sourceButton, "✓ 준비 완료");
-  showRunnerFeedback(`질문 ${definition.queries.length}개 · 총 ${runner.runs.length}회 준비됨. 아래 첫 질문을 복사하세요.`, "success");
-  requestAnimationFrame(() => elements.queryCard.scrollIntoView({ behavior: "smooth", block: "nearest" }));
-  showMessage(`질문 ${definition.queries.length}개, 총 ${runner.runs.length}회 측정을 준비했습니다.`, true);
-}
-
-function renderRunner() {
-  const visible = visibleQueryState();
-  const query = visible.query;
-  elements.queryCard.hidden = !query;
-  if (!query) return;
-  elements.queryProgress.textContent = visible.isLastSent ? "마지막 질문 전송됨" : visible.isNext ? `다음 질문 ${visible.index + 1} / ${runner.runs.length}` : `진행 ${visible.index + 1} / ${runner.runs.length}`;
-  elements.queryText.textContent = query.expected_prompt;
-  elements.queryMeta.textContent = visible.isNext ? `바로 복사할 수 있습니다 · 반복 ${query.repetition}회차` : `반복 ${query.repetition}회차`;
-  if (visible.isNext && lastAnnouncedVisibleIndex !== visible.index) {
-    showRunnerFeedback("현재 질문이 수집됐습니다. 다음 질문을 바로 복사할 수 있습니다.", "success");
-  }
-  lastAnnouncedVisibleIndex = visible.index;
-  const active = Boolean(latestStatus?.measuring);
-  elements.nextQuery.disabled = !active || runner.index >= runner.runs.length - 1 || !latestStatus?.current_conversation_prompt_count;
-  elements.copyQuery.disabled = visible.isLastSent;
-  elements.prepareQueryList.disabled = active;
-  elements.loadQuerySet.disabled = active;
-  elements.clearQuerySet.disabled = active;
-  elements.queryListInput.disabled = active;
-  elements.queryRepetitions.disabled = active;
-  elements.querySetInput.disabled = active;
-}
-
-function render(status) {
-  latestStatus = status;
-  const active = Boolean(status?.measuring);
-  const runnerActive = Boolean(currentQuery()) && elements.measurementType.value === "independent_query";
-  elements.dot.classList.toggle("active", active);
-  elements.label.textContent = active ? "측정 중" : "측정 준비됨";
-  elements.detail.textContent = active
-    ? `${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"} · 대화 ${status.conversation_count}개 · 후보 ${status.candidate_count}개`
-    : status?.run_id ? `대화 ${status.conversation_count}개 · 수집 후보 ${status.candidate_count}개 · 내려받을 수 있습니다.` : "측정 시작 이후의 새 대화만 기록합니다.";
-  elements.start.disabled = active;
-  elements.newConversation.disabled = !active || runnerActive;
-  elements.stop.disabled = !active;
-  elements.export.disabled = !status?.run_id;
-  elements.measurementType.disabled = active;
-  elements.prepareQueryList.disabled = active;
-  elements.loadQuerySet.disabled = active;
-  elements.clearQuerySet.disabled = active;
-  elements.queryListInput.disabled = active;
-  elements.queryRepetitions.disabled = active;
-  elements.querySetInput.disabled = active;
-  renderRunner();
-}
-
-function showMessage(message, success = false) {
+function showMessage(message = "", success = false) {
   elements.message.style.color = success ? "#2d6a4f" : "#a33a2b";
   elements.message.textContent = message;
 }
 
-async function refresh() {
-  try { render(await request("observer:status")); }
-  catch (error) {
-    elements.label.textContent = "ChatGPT 연결 필요";
-    elements.detail.textContent = "ChatGPT 탭을 선택하거나 새로고침하세요.";
-    showMessage(error.message);
-    elements.start.disabled = true;
-    elements.newConversation.disabled = true;
-    elements.stop.disabled = true;
-    elements.export.disabled = true;
+function flashButton(button, label, duration = 1400) {
+  clearTimeout(buttonTimers.get(button));
+  const original = button.dataset.defaultLabel || button.textContent;
+  button.dataset.defaultLabel = original;
+  button.textContent = label;
+  button.classList.add("confirmed");
+  buttonTimers.set(button, setTimeout(() => {
+    button.textContent = original;
+    button.classList.remove("confirmed");
+  }, duration));
+}
+
+function queryInputs() {
+  return [...elements.queryList.querySelectorAll("input")];
+}
+
+function renumberQueries() {
+  [...elements.queryList.children].forEach((row, index) => {
+    row.querySelector(".query-number").textContent = String(index + 1);
+    row.querySelector("input").placeholder = index ? "다음 질문을 입력하세요" : "예: 마곡 피부과 추천해줘";
+    row.querySelector(".remove-query").hidden = elements.queryList.children.length === 1;
+  });
+}
+
+function addQueryRow(value = "") {
+  const row = document.createElement("div");
+  row.className = "query-row";
+  row.innerHTML = '<span class="query-number"></span><input type="text"><button class="remove-query" aria-label="질문 삭제">×</button>';
+  row.querySelector("input").value = value;
+  row.querySelector("input").addEventListener("input", saveDraftRunner);
+  row.querySelector(".remove-query").addEventListener("click", () => {
+    row.remove();
+    renumberQueries();
+    saveDraftRunner();
+  });
+  elements.queryList.append(row);
+  renumberQueries();
+  return row.querySelector("input");
+}
+
+function setQueryRows(prompts) {
+  elements.queryList.replaceChildren();
+  (prompts.length ? prompts : [""]).forEach(addQueryRow);
+}
+
+function buildRunner() {
+  const definition = createQuerySetFromPrompts(queryInputs().map((input) => input.value), elements.queryRepetitions.value);
+  return { definition, runs: expandQuerySet(definition) };
+}
+
+async function saveDraftRunner() {
+  runnerDirty = true;
+  try {
+    runner = buildRunner();
+    await saveRunner();
+  } catch (_) {
+    // 빈 입력 중에는 마지막으로 유효했던 질문 세트를 유지한다.
   }
 }
 
-async function perform(type) {
-  try { render(await request(type)); }
-  catch (error) { showMessage(error.message); }
+function setWorkflow({ step = "", title = "", instruction = "", query = null, queryIndex = null, total = 0, canCopy = false, confirm = false, manual = false, finish = false }) {
+  elements.workflowStep.textContent = step;
+  elements.workflowTitle.textContent = title;
+  elements.workflowInstruction.textContent = instruction;
+  elements.workflowQuery.hidden = !query;
+  elements.copyQuery.hidden = !canCopy;
+  elements.confirmNewChat.hidden = !confirm;
+  elements.markComplete.hidden = !manual;
+  elements.finishMeasurement.hidden = !finish;
+  if (query) {
+    elements.queryProgress.textContent = Number.isInteger(queryIndex) ? `${queryIndex + 1} / ${total}` : "현재 질문";
+    elements.queryText.textContent = query.expected_prompt;
+    elements.copyQuery.dataset.prompt = query.expected_prompt;
+  }
 }
 
-elements.prepareQueryList.addEventListener("click", async () => {
+function renderWorkflow(status) {
+  const progress = Number.isInteger(status.active_run_index) ? `${status.active_run_index + 1}/${status.total_runs}` : `0/${status.total_runs}`;
+  if (status.phase === "awaiting_new_chat") {
+    const first = status.active_run_index === null;
+    setWorkflow({
+      step: first ? "1단계" : `질문 ${progress} 완료`,
+      title: first ? "현재 탭에서 새 채팅을 여세요" : "답변 수집 완료",
+      instruction: first ? "새 탭을 열지 말고, 지금 측정 중인 ChatGPT 탭에서 새 채팅을 연 뒤 아래 버튼을 누르세요." : "다음 질문을 복사한 뒤, 지금 탭에서 새 채팅을 열고 아래 버튼을 누르세요.",
+      query: status.next_query,
+      queryIndex: status.next_run_index,
+      total: status.total_runs,
+      canCopy: !first,
+      confirm: true
+    });
+  } else if (status.phase === "awaiting_chat_mode") {
+    const temporary = status.desired_chat_mode === "temporary";
+    setWorkflow({
+      step: `질문 ${status.active_run_index + 1}/${status.total_runs}`,
+      title: temporary ? "임시 채팅을 켜세요" : "일반 채팅으로 전환하세요",
+      instruction: temporary ? "ChatGPT에서 임시 채팅을 켜면 질문 복사 단계로 자동 전환됩니다." : "임시 채팅을 끄면 질문 복사 단계로 자동 전환됩니다.",
+      query: status.active_query,
+      queryIndex: status.active_run_index,
+      total: status.total_runs
+    });
+  } else if (status.phase === "ready_to_send") {
+    const journey = status.measurement_type === "conversation_journey";
+    setWorkflow({
+      step: journey ? "측정 중" : `질문 ${status.active_run_index + 1}/${status.total_runs}`,
+      title: journey ? "ChatGPT에 질문을 입력하세요" : "질문을 복사해 전송하세요",
+      instruction: journey ? "이 채팅에서 이어지는 질문과 답변을 자동으로 수집합니다." : "복사한 질문을 ChatGPT 입력창에 붙여넣고 전송하세요.",
+      query: status.active_query,
+      queryIndex: status.active_run_index,
+      total: status.total_runs,
+      canCopy: !journey
+    });
+  } else if (status.phase === "collecting_response") {
+    setWorkflow({
+      step: status.measurement_type === "conversation_journey" ? "측정 중" : `질문 ${status.active_run_index + 1}/${status.total_runs}`,
+      title: status.assistant_response_seen ? "GPT 답변을 수집하고 있어요" : "질문을 확인했어요",
+      instruction: status.assistant_response_seen ? "답변 생성이 끝나면 다음 단계로 자동 전환됩니다." : "GPT 답변이 시작되기를 기다리고 있습니다.",
+      query: status.active_query,
+      queryIndex: status.active_run_index,
+      total: status.total_runs,
+      manual: status.assistant_response_seen
+    });
+  } else if (status.phase === "response_complete") {
+    setWorkflow({ step: "답변 수집 완료", title: "다음 질문을 입력하세요", instruction: "같은 채팅에서 계속 질문하면 이어서 수집합니다." });
+  } else if (status.phase === "completed") {
+    setWorkflow({ step: "측정 완료", title: "모든 질문을 수집했습니다", instruction: `질문 ${status.total_runs}회의 답변 수집이 끝났습니다.`, finish: true });
+  } else {
+    setWorkflow({ step: "측정 중", title: "상태를 확인하고 있습니다", instruction: "잠시만 기다려 주세요." });
+  }
+}
+
+function render(status, tabMismatch = false) {
+  const active = Boolean(status?.measuring);
+  elements.statusDot.classList.toggle("active", active);
+  elements.statusLabel.textContent = active ? "측정 중" : status?.run_id ? "측정 종료" : "측정 준비";
+  elements.statusDetail.textContent = active
+    ? `${status.question_count}/${status.total_runs || "-"} 질문 수집 · ${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"}`
+    : status?.run_id ? `질문 ${status.question_count}개 · 답변 ${status.answer_count}개` : "질문을 입력하고 측정을 시작하세요.";
+  elements.tabWarning.hidden = !tabMismatch;
+  elements.setup.hidden = active;
+  elements.workflow.hidden = !active || tabMismatch;
+  elements.stop.hidden = !active || tabMismatch;
+  elements.results.hidden = !status?.run_id || active;
+  if (active && !tabMismatch) renderWorkflow(status);
+}
+
+async function refresh() {
   try {
-    await setRunner(createQuerySetFromText(elements.queryListInput.value, elements.queryRepetitions.value));
-  } catch (error) { showRunnerFeedback(error.message, "error"); showMessage(error.message); }
+    const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+    activeTabId = active?.id || null;
+    const status = await request("observer:status");
+    if (status.collector_version !== COLLECTOR_VERSION) throw new Error("익스텐션을 다시 로드한 뒤 ChatGPT 탭도 새로고침해 주세요.");
+    if (measurementSession?.runId && status.run_id !== measurementSession.runId) {
+      await saveSession(null);
+      throw new Error("측정 세션이 초기화되었습니다. 다시 시작해 주세요.");
+    }
+    render(status, Boolean(status.measuring && measurementSession?.ownerTabId && activeTabId !== measurementSession.ownerTabId));
+  } catch (error) {
+    elements.statusDot.classList.remove("active");
+    elements.statusLabel.textContent = "ChatGPT 연결 필요";
+    elements.statusDetail.textContent = error.message;
+    elements.workflow.hidden = true;
+    elements.tabWarning.hidden = true;
+    elements.setup.hidden = false;
+    elements.stop.hidden = true;
+    showMessage(error.message);
+  }
+}
+
+elements.addQuery.addEventListener("click", () => {
+  runnerDirty = true;
+  addQueryRow("").focus();
 });
+elements.measurementType.addEventListener("change", () => {
+  elements.independentSettings.hidden = elements.measurementType.value !== "independent_query";
+});
+elements.queryRepetitions.addEventListener("change", saveDraftRunner);
 
 elements.loadQuerySet.addEventListener("click", async () => {
   try {
-    await setRunner(JSON.parse(elements.querySetInput.value), elements.loadQuerySet);
-  } catch (error) { showRunnerFeedback(`JSON을 확인해 주세요: ${error.message}`, "error"); showMessage(error.message); }
-});
-
-elements.clearQuerySet.addEventListener("click", async () => {
-  runner = null;
-  lastAnnouncedVisibleIndex = null;
-  elements.queryListInput.value = "";
-  elements.queryRepetitions.value = "1";
-  elements.querySetInput.value = "";
-  await saveRunner();
-  renderRunner();
-  showRunnerFeedback("초기화했습니다. 새 질문을 입력해 주세요.");
-  showMessage("질문 세트를 초기화했습니다.", true);
-});
-
-elements.copyQuery.addEventListener("click", async () => {
-  const query = visibleQueryState().query;
-  if (!query) return;
-  try {
-    await navigator.clipboard.writeText(query.expected_prompt);
-    flashButton(elements.copyQuery, "✓ 복사됨");
-    showRunnerFeedback("클립보드에 복사했습니다. ChatGPT 입력창에 붙여넣으세요.", "success");
-    showMessage("질문을 복사했습니다.", true);
-  } catch (error) { showRunnerFeedback(`복사에 실패했습니다: ${error.message}`, "error"); showMessage(`질문 복사에 실패했습니다: ${error.message}`); }
+    const definition = JSON.parse(elements.querySetInput.value);
+    runner = { definition, runs: expandQuerySet(definition) };
+    runnerDirty = false;
+    setQueryRows(definition.queries.map((query) => query.text));
+    const repetitions = new Set(definition.queries.map((query) => query.repetitions ?? 1));
+    if (repetitions.size === 1) elements.queryRepetitions.value = String([...repetitions][0]);
+    elements.measurementType.value = "independent_query";
+    elements.independentSettings.hidden = false;
+    await saveRunner();
+    showMessage(`질문 ${definition.queries.length}개를 불러왔습니다.`, true);
+  } catch (error) { showMessage(`JSON을 확인해 주세요: ${error.message}`); }
 });
 
 elements.start.addEventListener("click", async () => {
   try {
+    const tab = await activeChatGptTab();
+    const collectorStatus = await send(tab, "observer:status");
+    if (collectorStatus.collector_version !== COLLECTOR_VERSION) throw new Error("익스텐션을 다시 로드한 뒤 ChatGPT 탭도 새로고침해 주세요.");
     const measurementType = elements.measurementType.value;
-    if (measurementType === "independent_query" && runner && !currentQuery()) throw new Error("실행할 질문이 없습니다.");
-    render(await request("observer:start", { measurement_type: measurementType, query_metadata: measurementType === "independent_query" ? currentQuery() : null, query_set: measurementType === "independent_query" ? querySetMetadata() : null }));
-    showMessage("측정을 시작했습니다.", true);
+    if (measurementType === "independent_query") {
+      if (!runner || runnerDirty) runner = buildRunner();
+      runnerDirty = false;
+      await saveRunner();
+    }
+    const status = await send(tab, "observer:start", {
+      measurement_type: measurementType,
+      query_set: measurementType === "independent_query" ? querySetMetadata(runner.definition, runner.runs.length) : null,
+      query_runs: measurementType === "independent_query" ? runner.runs : [],
+      desired_chat_mode: elements.desiredChatMode.value,
+      owner_tab_id: tab.id
+    });
+    await saveSession({ ownerTabId: tab.id, runId: status.run_id });
+    render(status);
+    showMessage("");
   } catch (error) { showMessage(error.message); }
 });
 
-elements.nextQuery.addEventListener("click", async () => {
-  if (!runner || runner.index >= runner.runs.length - 1) return;
-  if (!latestStatus?.current_conversation_prompt_count) {
-    showRunnerFeedback("현재 질문을 ChatGPT에 먼저 전송해 주세요.", "error");
-    showMessage("현재 질문을 ChatGPT에 먼저 전송해 주세요.");
-    return;
-  }
-  const previousIndex = runner.index;
-  runner.index += 1;
+elements.confirmNewChat.addEventListener("click", async () => {
   try {
-    render(await request("observer:new-conversation", { query_metadata: currentQuery() }));
-    await saveRunner();
-    renderRunner();
-    flashButton(elements.nextQuery, "✓ 전환 완료");
-    showRunnerFeedback("다음 질문 측정으로 전환했습니다. 임시 채팅을 켠 뒤 복사한 질문을 전송하세요.", "success");
-    showMessage("다음 질문을 새 대화에 연결했습니다. 임시 채팅으로 전환한 뒤 복사한 질문을 전송하세요.", true);
-  } catch (error) {
-    runner.index = previousIndex;
-    renderRunner();
-    showRunnerFeedback(`다음 질문 전환에 실패했습니다: ${error.message}`, "error");
-    showMessage(error.message);
-  }
-});
-
-elements.newConversation.addEventListener("click", async () => {
-  try {
-    render(await request("observer:new-conversation"));
-    showMessage("새 대화 경계를 기록했습니다. 이제 질문을 입력하세요.", true);
+    render(await request("observer:confirm-new-chat"));
+    showMessage("");
   } catch (error) { showMessage(error.message); }
 });
 
-elements.stop.addEventListener("click", () => perform("observer:stop"));
+elements.copyQuery.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(elements.copyQuery.dataset.prompt || "");
+    flashButton(elements.copyQuery, "✓ 복사됨");
+    showMessage("ChatGPT 입력창에 붙여넣고 전송하세요.", true);
+  } catch (error) { showMessage(`복사하지 못했습니다: ${error.message}`); }
+});
+
+elements.markComplete.addEventListener("click", async () => {
+  try {
+    render(await request("observer:mark-response-complete"));
+    showMessage("답변 완료로 표시했습니다.", true);
+  } catch (error) { showMessage(error.message); }
+});
+
+async function stopMeasurement() {
+  try {
+    render(await request("observer:stop"));
+    showMessage("측정을 종료했습니다. 결과를 내려받을 수 있습니다.", true);
+  } catch (error) { showMessage(error.message); }
+}
+elements.stop.addEventListener("click", stopMeasurement);
+elements.finishMeasurement.addEventListener("click", stopMeasurement);
+
+elements.returnToTab.addEventListener("click", async () => {
+  if (!measurementSession?.ownerTabId) return;
+  try { await chrome.tabs.update(measurementSession.ownerTabId, { active: true }); }
+  catch (_) { showMessage("측정을 시작한 탭을 찾지 못했습니다."); }
+});
+
 elements.export.addEventListener("click", async () => {
   try {
     const observation = await request("observer:export");
@@ -259,20 +329,20 @@ elements.export.addEventListener("click", async () => {
 });
 
 async function initialize() {
-  const stored = await chrome.storage.local.get("queryRunner");
-  if (stored.queryRunner) {
+  const [local, session] = await Promise.all([chrome.storage.local.get("queryRunner"), chrome.storage.session.get("measurementSession")]);
+  measurementSession = session.measurementSession || null;
+  if (local.queryRunner) {
     try {
-      runner = stored.queryRunner;
+      runner = local.queryRunner;
+      runnerDirty = false;
       runner.runs = expandQuerySet(runner.definition);
-      if (runner.index >= runner.runs.length) runner.index = 0;
-      elements.queryListInput.value = runner.definition.queries.map((query) => query.text).join("\n");
+      setQueryRows(runner.definition.queries.map((query) => query.text));
       const repetitions = new Set(runner.definition.queries.map((query) => query.repetitions ?? 1));
       if (repetitions.size === 1) elements.queryRepetitions.value = String([...repetitions][0]);
       elements.querySetInput.value = JSON.stringify(runner.definition, null, 2);
-    } catch (_) { runner = null; }
-  }
-  renderRunner();
-  refresh();
+    } catch (_) { runner = null; setQueryRows([""]); }
+  } else setQueryRows([""]);
+  await refresh();
   setInterval(refresh, 750);
 }
 

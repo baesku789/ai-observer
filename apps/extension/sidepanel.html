@@ -8,9 +8,7 @@
   </head>
   <body>
     <main>
-      <header>
-        <h1>AI Observer</h1>
-      </header>
+      <header><h1>AI Observer</h1></header>
 
       <section class="status-card" aria-live="polite">
         <span id="status-dot" class="dot"></span>
@@ -20,51 +18,72 @@
         </div>
       </section>
 
-      <section class="start-card">
+      <section id="tab-warning" class="tab-warning" hidden>
+        <strong>측정 탭이 변경되었습니다</strong>
+        <p>일관된 측정을 위해 처음 시작한 ChatGPT 탭에서 계속 진행합니다.</p>
+        <button id="return-to-tab" class="primary">측정 탭으로 이동</button>
+      </section>
+
+      <section id="workflow" class="workflow" hidden aria-live="polite">
+        <span id="workflow-step" class="eyebrow"></span>
+        <h2 id="workflow-title"></h2>
+        <p id="workflow-instruction"></p>
+        <div id="workflow-query" class="query-card" hidden>
+          <span id="query-progress" class="query-progress"></span>
+          <strong id="query-text"></strong>
+          <button id="copy-query" class="primary">질문 복사</button>
+        </div>
+        <button id="confirm-new-chat" class="primary" hidden>새 채팅 열었어요</button>
+        <button id="mark-complete" hidden>답변 완료로 표시</button>
+        <button id="finish-measurement" class="primary" hidden>측정 종료</button>
+      </section>
+
+      <section id="setup" class="setup">
         <label class="field">
           <span>측정 방식</span>
           <select id="measurement-type">
-            <option value="independent_query">여러 질문을 각각 측정</option>
-            <option value="conversation_journey">하나의 대화를 이어서 측정</option>
+            <option value="independent_query">질문마다 새 채팅에서 측정</option>
+            <option value="conversation_journey">한 채팅에서 이어서 측정</option>
           </select>
         </label>
-        <button id="start" class="primary start-button">측정 시작</button>
-      </section>
 
-      <section class="runner" id="query-runner">
-        <h2>질문</h2>
-        <textarea id="query-list-input" rows="5" placeholder="마곡에서 피부과 추천해줘&#10;마곡에서 여드름 치료 잘하는 곳 알려줘"></textarea>
-        <label class="field compact-field">
-          <span>질문별 반복 횟수</span>
-          <input id="query-repetitions" type="number" min="1" max="20" value="1">
-        </label>
-        <div class="button-row">
-          <button id="prepare-query-list" class="primary">질문 준비</button>
-          <button id="clear-query-set">초기화</button>
-        </div>
-        <p id="runner-feedback" class="runner-feedback" aria-live="polite"></p>
-        <div class="query-card" id="query-card" hidden>
-          <span id="query-progress" class="query-progress"></span>
-          <strong id="query-text"></strong>
-          <span id="query-meta" class="query-meta"></span>
-          <div class="button-row">
-            <button id="copy-query">질문 복사</button>
-            <button id="next-query">다음 질문 준비</button>
+        <div id="independent-settings">
+          <div class="section-heading">
+            <h2>측정할 질문</h2>
+            <button id="add-query" class="small-button">+ 질문 추가</button>
           </div>
+          <div id="query-list" class="query-list"></div>
+
+          <div class="settings-grid">
+            <label class="field">
+              <span>질문별 반복</span>
+              <input id="query-repetitions" type="number" min="1" max="20" value="1">
+            </label>
+            <label class="field">
+              <span>채팅 모드</span>
+              <select id="desired-chat-mode">
+                <option value="temporary">임시 채팅</option>
+                <option value="regular">일반 채팅</option>
+              </select>
+            </label>
+          </div>
+          <p class="setup-note">한 ChatGPT 탭에서 질문마다 새 채팅을 열어 측정합니다.</p>
         </div>
+
+        <button id="start" class="primary start-button">측정 시작</button>
+
         <details class="advanced-import">
-          <summary>JSON으로 가져오기 (고급)</summary>
+          <summary>질문 JSON 가져오기</summary>
           <textarea id="query-set-input" rows="5" spellcheck="false" placeholder="질문 세트 JSON을 붙여 넣으세요"></textarea>
           <button id="load-query-set">JSON 불러오기</button>
         </details>
       </section>
 
-      <section class="actions">
-        <button id="new-conversation" disabled>새 대화로 분리</button>
-        <button id="stop" disabled>측정 중지</button>
-        <button id="export" disabled>JSON 내려받기</button>
+      <section id="results" class="results" hidden>
+        <button id="export" class="primary">JSON 내려받기</button>
       </section>
 
+      <button id="stop" class="quiet-action" hidden>측정 중지</button>
       <p id="message" class="message" role="alert"></p>
     </main>
     <script type="module" src="sidepanel.js"></script>

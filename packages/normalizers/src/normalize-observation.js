@@ -14,7 +14,7 @@ function detectLanguage(text) {
 function validateRaw(raw) {
   const errors = [];
   if (!raw || typeof raw !== "object") errors.push("root must be an object");
-  if (!/^0\.(2|3|4|5)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
+  if (!/^0\.(2|3|4|5|6)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
   if (!Array.isArray(raw?.turn_candidates)) errors.push("turn_candidates must be an array");
   if (errors.length) throw new Error(`Invalid raw observation: ${errors.join("; ")}`);
 }
@@ -73,7 +73,7 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
   for (const rawTurn of raw.turn_candidates) {
     const context = contextById.get(rawTurn.context_id);
     if (!context) warnings.push({ code: "missing_context", severity: "warning", turn_id: rawTurn.turn_id, context_id: rawTurn.context_id });
-    if (raw.schema_version.startsWith("0.4.") && !conversationById.has(rawTurn.conversation_instance_id)) warnings.push({ code: "missing_conversation_instance", severity: "warning", turn_id: rawTurn.turn_id, conversation_instance_id: rawTurn.conversation_instance_id });
+    if (/^0\.(4|5|6)\./.test(raw.schema_version) && !conversationById.has(rawTurn.conversation_instance_id)) warnings.push({ code: "missing_conversation_instance", severity: "warning", turn_id: rawTurn.turn_id, conversation_instance_id: rawTurn.conversation_instance_id });
     if (!rawTurn.prompt) warnings.push({ code: "missing_prompt", severity: "warning", turn_id: rawTurn.turn_id });
     if ((rawTurn.response_candidates || []).length > 1) warnings.push({ code: "multiple_response_candidates", severity: "info", turn_id: rawTurn.turn_id, count: rawTurn.response_candidates.length });
     const sourceRefs = new Map();
@@ -112,7 +112,7 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
     const effectiveChatMode = turnChatModes.length === 1 ? turnChatModes[0] : turnChatModes.length > 1 ? "mixed" : null;
     if (measurementType === "independent_query" && conversationTurns.filter((turn) => turn.question).length !== 1) warnings.push({ code: "independent_query_turn_count", severity: "warning", conversation_instance_id: conversation.conversation_instance_id, observed_turn_count: conversationTurns.filter((turn) => turn.question).length });
     if (conversation.query?.prompt_match === "mismatch") warnings.push({ code: "query_prompt_mismatch", severity: "warning", conversation_instance_id: conversation.conversation_instance_id, query_id: conversation.query.query_id, expected_prompt: conversation.query.expected_prompt, observed_prompt: conversation.query.observed_prompt });
-    return { conversation_instance_id: conversation.conversation_instance_id, started_at: conversation.started_at, ended_at: conversation.ended_at, boundary_source: conversation.boundary_source, query: conversation.query || null, setup_chat_modes: conversation.chat_modes || [], effective_chat_mode: effectiveChatMode, turn_chat_modes: turnChatModes, context_ids: conversation.context_ids || [], turn_ids: conversationTurns.map((turn) => turn.turn_id), turn_count: conversationTurns.length };
+    return { conversation_instance_id: conversation.conversation_instance_id, started_at: conversation.started_at, ended_at: conversation.ended_at, boundary_source: conversation.boundary_source, run_index: conversation.run_index ?? null, manual_completion: conversation.manual_completion || null, query: conversation.query || null, setup_chat_modes: conversation.chat_modes || [], effective_chat_mode: effectiveChatMode, turn_chat_modes: turnChatModes, context_ids: conversation.context_ids || [], turn_ids: conversationTurns.map((turn) => turn.turn_id), turn_count: conversationTurns.length };
   });
   const queryByConversation = new Map(conversations.map((conversation) => [conversation.conversation_instance_id, conversation.query]));
   for (const turn of turns) turn.query = queryByConversation.get(turn.conversation_instance_id) || null;
@@ -135,7 +135,7 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
     schema_version: "normalized-0.3.0",
     normalizer: { name: "chatgpt-web-normalizer", version: "0.3.0" },
     provenance: { raw_schema_version: raw.schema_version, observation_id: raw.observation_id, run_id: raw.run_id, source_captured_at: raw.captured_at },
-    measurement: { measurement_type: measurementType, boundary_strategy: raw.measurement?.boundary_strategy || "legacy_inferred", query_set: raw.measurement?.query_set || null },
+    measurement: { measurement_type: measurementType, boundary_strategy: raw.measurement?.boundary_strategy || "legacy_inferred", tab_scope: raw.measurement?.tab_scope || null, desired_chat_mode: raw.measurement?.desired_chat_mode || null, query_set: raw.measurement?.query_set || null },
     environment: { surface: raw.surface, chat_modes: [...new Set((raw.chat_contexts || []).map((context) => context.chat_mode))], displayed_model: raw.environment?.displayed_model ?? null, displayed_mode: raw.environment?.displayed_mode ?? null, locale: raw.environment?.locale ?? null },
     conversations,
     turns,

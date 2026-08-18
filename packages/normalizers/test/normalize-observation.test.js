@@ -110,3 +110,13 @@ test("질문 세트 예상 질문과 실제 질문의 불일치를 경고한다"
   const result = normalizeObservation(modern);
   assert.equal(result.normalization_warnings.find((warning) => warning.code === "query_prompt_mismatch")?.query_id, "q_001");
 });
+
+test("Collector 0.6 단일 탭과 목표 채팅 모드를 보존한다", () => {
+  const modern = structuredClone(raw);
+  modern.schema_version = "0.6.0-draft";
+  modern.measurement = { measurement_type: "independent_query", boundary_strategy: "user_confirmed_new_chat", tab_scope: "single_tab", desired_chat_mode: "temporary", query_set: { query_set_id: "magok_v1", total_runs: 1 } };
+  const result = normalizeObservation(modern);
+  assert.equal(result.measurement.tab_scope, "single_tab");
+  assert.equal(result.measurement.desired_chat_mode, "temporary");
+  assert.equal(result.measurement.boundary_strategy, "user_confirmed_new_chat");
+});
