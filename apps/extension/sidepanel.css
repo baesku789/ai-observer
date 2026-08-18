@@ -18,15 +18,21 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: 31px; font-weight: 500; 
 .dot.active { background: #168052; box-shadow: 0 0 0 4px #dceee5; }
 .actions { display: grid; gap: 9px; margin: 18px 0; }
 .runner { margin-top: 18px; padding: 15px; border: 1px solid #d9d5c9; border-radius: 14px; background: #fffdf8; }
-.runner h2 { margin: 0 0 10px; font-size: 13px; }
-.runner textarea { width: 100%; resize: vertical; padding: 10px; border: 1px solid #c9c7bf; border-radius: 9px; color: #26312b; background: white; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.runner h2 { margin: 0 0 5px; font-size: 15px; }
+.runner-help { margin: 0 0 10px; color: #656d68; font-size: 12px; }
+.runner textarea { width: 100%; resize: vertical; padding: 10px; border: 1px solid #c9c7bf; border-radius: 9px; color: #26312b; background: white; font: inherit; font-size: 13px; line-height: 1.5; }
 .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
 .query-card { display: grid; gap: 7px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e1ded5; }
 .query-card strong { font-size: 14px; line-height: 1.45; }
 .query-progress { color: #41705a; font-size: 11px; font-weight: 800; letter-spacing: .06em; }
 .query-meta { color: #747b76; font-size: 11px; }
 .field { display: grid; gap: 6px; color: #59635d; font-size: 12px; font-weight: 700; }
-.field select { width: 100%; padding: 10px 12px; border: 1px solid #c9c7bf; border-radius: 10px; color: #26312b; background: #fffdf8; font: inherit; font-size: 14px; }
+.field select, .field input { width: 100%; padding: 10px 12px; border: 1px solid #c9c7bf; border-radius: 10px; color: #26312b; background: #fffdf8; font: inherit; font-size: 14px; }
+.compact-field { margin-top: 10px; }
+.advanced-import { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e1ded5; }
+.advanced-import summary { color: #656d68; font-size: 12px; cursor: pointer; }
+.advanced-import textarea { margin-top: 9px; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.advanced-import button { margin-top: 7px; }
 button { width: 100%; padding: 11px 14px; border: 1px solid #c9c7bf; border-radius: 10px; color: #26312b; background: #fffdf8; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 button.primary { border-color: #234d3a; color: white; background: #234d3a; }
 button:disabled { cursor: not-allowed; opacity: .45; }

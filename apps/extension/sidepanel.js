@@ -1,4 +1,4 @@
-import { expandQuerySet, querySetMetadata as buildQuerySetMetadata } from "./query-set.js";
+import { createQuerySetFromText, expandQuerySet, querySetMetadata as buildQuerySetMetadata } from "./query-set.js";
 
 const elements = {
   start: document.querySelector("#start"),
@@ -10,6 +10,9 @@ const elements = {
   label: document.querySelector("#status-label"),
   detail: document.querySelector("#status-detail"),
   message: document.querySelector("#message"),
+  queryListInput: document.querySelector("#query-list-input"),
+  queryRepetitions: document.querySelector("#query-repetitions"),
+  prepareQueryList: document.querySelector("#prepare-query-list"),
   querySetInput: document.querySelector("#query-set-input"),
   loadQuerySet: document.querySelector("#load-query-set"),
   clearQuerySet: document.querySelector("#clear-query-set"),
@@ -56,18 +59,30 @@ async function saveRunner() {
   else await chrome.storage.local.remove("queryRunner");
 }
 
+async function setRunner(definition) {
+  runner = { definition, runs: expandQuerySet(definition), index: 0 };
+  elements.measurementType.value = "independent_query";
+  await saveRunner();
+  renderRunner();
+  showMessage(`질문 ${definition.queries.length}개, 총 ${runner.runs.length}회 측정을 준비했습니다.`, true);
+}
+
 function renderRunner() {
   const query = currentQuery();
   elements.queryCard.hidden = !query;
   if (!query) return;
-  elements.queryProgress.textContent = `질문 실행 ${runner.index + 1} / ${runner.runs.length}`;
+  elements.queryProgress.textContent = `진행 ${runner.index + 1} / ${runner.runs.length}`;
   elements.queryText.textContent = query.expected_prompt;
-  elements.queryMeta.textContent = `${query.query_id} · ${query.category} · 반복 ${query.repetition}`;
+  elements.queryMeta.textContent = `반복 ${query.repetition}회차`;
   const active = Boolean(latestStatus?.measuring);
   elements.nextQuery.disabled = !active || runner.index >= runner.runs.length - 1;
   elements.copyQuery.disabled = false;
+  elements.prepareQueryList.disabled = active;
   elements.loadQuerySet.disabled = active;
   elements.clearQuerySet.disabled = active;
+  elements.queryListInput.disabled = active;
+  elements.queryRepetitions.disabled = active;
+  elements.querySetInput.disabled = active;
 }
 
 function render(status) {
@@ -84,8 +99,12 @@ function render(status) {
   elements.stop.disabled = !active;
   elements.export.disabled = !status?.run_id;
   elements.measurementType.disabled = active;
+  elements.prepareQueryList.disabled = active;
   elements.loadQuerySet.disabled = active;
   elements.clearQuerySet.disabled = active;
+  elements.queryListInput.disabled = active;
+  elements.queryRepetitions.disabled = active;
+  elements.querySetInput.disabled = active;
   renderRunner();
 }
 
@@ -112,19 +131,22 @@ async function perform(type) {
   catch (error) { showMessage(error.message); }
 }
 
+elements.prepareQueryList.addEventListener("click", async () => {
+  try {
+    await setRunner(createQuerySetFromText(elements.queryListInput.value, elements.queryRepetitions.value));
+  } catch (error) { showMessage(error.message); }
+});
+
 elements.loadQuerySet.addEventListener("click", async () => {
   try {
-    const definition = JSON.parse(elements.querySetInput.value);
-    runner = { definition, runs: expandQuerySet(definition), index: 0 };
-    elements.measurementType.value = "independent_query";
-    await saveRunner();
-    renderRunner();
-    showMessage(`${runner.runs.length}개 질문 실행을 준비했습니다.`, true);
+    await setRunner(JSON.parse(elements.querySetInput.value));
   } catch (error) { showMessage(error.message); }
 });
 
 elements.clearQuerySet.addEventListener("click", async () => {
   runner = null;
+  elements.queryListInput.value = "";
+  elements.queryRepetitions.value = "1";
   elements.querySetInput.value = "";
   await saveRunner();
   renderRunner();
@@ -192,6 +214,9 @@ async function initialize() {
       runner = stored.queryRunner;
       runner.runs = expandQuerySet(runner.definition);
       if (runner.index >= runner.runs.length) runner.index = 0;
+      elements.queryListInput.value = runner.definition.queries.map((query) => query.text).join("\n");
+      const repetitions = new Set(runner.definition.queries.map((query) => query.repetitions ?? 1));
+      if (repetitions.size === 1) elements.queryRepetitions.value = String([...repetitions][0]);
       elements.querySetInput.value = JSON.stringify(runner.definition, null, 2);
     } catch (_) { runner = null; }
   }

@@ -23,10 +23,15 @@
       </section>
 
       <section class="runner" id="query-runner">
-        <h2>독립 질문 세트</h2>
-        <textarea id="query-set-input" rows="6" spellcheck="false" placeholder='{"query_set_id":"magok_v1","queries":[{"query_id":"q_001","text":"마곡 피부과 추천해줘","category":"local","repetitions":2}]}'></textarea>
+        <h2>측정할 질문</h2>
+        <p class="runner-help">질문을 한 줄에 하나씩 입력하세요.</p>
+        <textarea id="query-list-input" rows="5" placeholder="마곡에서 피부과 추천해줘&#10;마곡에서 여드름 치료 잘하는 곳 알려줘"></textarea>
+        <label class="field compact-field">
+          <span>각 질문을 몇 번씩 물어볼까요?</span>
+          <input id="query-repetitions" type="number" min="1" max="20" value="1">
+        </label>
         <div class="button-row">
-          <button id="load-query-set">질문 세트 불러오기</button>
+          <button id="prepare-query-list" class="primary">질문 준비</button>
           <button id="clear-query-set">초기화</button>
         </div>
         <div class="query-card" id="query-card" hidden>
@@ -35,9 +40,14 @@
           <span id="query-meta" class="query-meta"></span>
           <div class="button-row">
             <button id="copy-query">질문 복사</button>
-            <button id="next-query">다음 질문으로 분리</button>
+            <button id="next-query">다음 질문 준비</button>
           </div>
         </div>
+        <details class="advanced-import">
+          <summary>JSON으로 가져오기 (고급)</summary>
+          <textarea id="query-set-input" rows="5" spellcheck="false" placeholder="질문 세트 JSON을 붙여 넣으세요"></textarea>
+          <button id="load-query-set">JSON 불러오기</button>
+        </details>
       </section>
 
       <section class="actions">
