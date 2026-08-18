@@ -27,6 +27,11 @@ export function createQuerySetFromText(text, repetitions = 1, querySetId = `manu
   };
 }
 
+export function visibleRunIndex(currentIndex, totalRuns, promptCaptured) {
+  if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= totalRuns) return null;
+  return promptCaptured && currentIndex < totalRuns - 1 ? currentIndex + 1 : currentIndex;
+}
+
 export function querySetMetadata(definition, totalRuns) {
   return { query_set_id: definition.query_set_id, version: definition.version || null, total_runs: totalRuns, queries: definition.queries };
 }

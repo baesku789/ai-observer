@@ -214,7 +214,11 @@
     state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); clearInterval(state.contextTimer); state.contextTimer = null; return status();
   }
   function status() {
-    return { measuring: state.measuring, measurement_type: state.measurementType, run_id: state.runId, started_at: state.startedAt, candidate_count: state.records.size, context_count: state.contexts.length, conversation_count: state.conversations.length, conversation_instance_id: state.currentConversation?.conversation_instance_id || null, current_query: state.currentConversation?.query || null, chat_mode: state.currentContext?.chat_mode || null, warning_count: state.warnings.length };
+    const conversationId = state.currentConversation?.conversation_instance_id || null;
+    const currentRecords = [...state.records.values()].filter((record) => record.conversation_instance_id === conversationId);
+    const promptCount = currentRecords.filter((record) => record.role === "user").length;
+    const latestResponse = currentRecords.filter((record) => record.role === "assistant").at(-1) || null;
+    return { measuring: state.measuring, measurement_type: state.measurementType, run_id: state.runId, started_at: state.startedAt, candidate_count: state.records.size, context_count: state.contexts.length, conversation_count: state.conversations.length, conversation_instance_id: conversationId, current_query: state.currentConversation?.query || null, current_conversation_prompt_count: promptCount, current_conversation_response_state: latestResponse?.completion_state || null, current_conversation_complete: latestResponse?.completion_state === "quiet_candidate", chat_mode: state.currentContext?.chat_mode || null, warning_count: state.warnings.length };
   }
   function buildTurns() {
     const turns = []; const currentByConversation = new Map();

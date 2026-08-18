@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createQuerySetFromText, expandQuerySet, querySetMetadata } from "../../../apps/extension/query-set.js";
+import { createQuerySetFromText, expandQuerySet, querySetMetadata, visibleRunIndex } from "../../../apps/extension/query-set.js";
 
 test("질문 세트를 반복 실행 큐로 펼친다", () => {
   const definition = { query_set_id: "magok_v1", version: "1", queries: [{ query_id: "q1", text: "마곡 피부과?", category: "local", repetitions: 2 }, { query_id: "q2", text: "김포공항 피부과?" }] };
@@ -19,4 +19,10 @@ test("일반 사용자의 줄 단위 질문을 질문 세트로 만든다", () =
   assert.equal(definition.query_set_id, "manual_test");
   assert.deepEqual(definition.queries.map((query) => [query.query_id, query.text, query.repetitions]), [["q_001", "첫 질문", 2], ["q_002", "두 번째 질문", 2]]);
   assert.equal(expandQuerySet(definition).length, 4);
+});
+
+test("현재 질문이 수집되면 다음 실행을 바로 표시한다", () => {
+  assert.equal(visibleRunIndex(0, 3, false), 0);
+  assert.equal(visibleRunIndex(0, 3, true), 1);
+  assert.equal(visibleRunIndex(2, 3, true), 2);
 });

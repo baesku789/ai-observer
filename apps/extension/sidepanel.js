@@ -1,4 +1,4 @@
-import { createQuerySetFromText, expandQuerySet, querySetMetadata as buildQuerySetMetadata } from "./query-set.js";
+import { createQuerySetFromText, expandQuerySet, querySetMetadata as buildQuerySetMetadata, visibleRunIndex } from "./query-set.js";
 
 const elements = {
   start: document.querySelector("#start"),
@@ -49,6 +49,13 @@ function currentQuery() {
   return runner?.runs[runner.index] || null;
 }
 
+function visibleQueryState() {
+  if (!runner) return { query: null, index: null, isNext: false, isLastSent: false };
+  const promptCaptured = Boolean(latestStatus?.current_conversation_prompt_count);
+  const index = visibleRunIndex(runner.index, runner.runs.length, promptCaptured);
+  return { query: index === null ? null : runner.runs[index], index, isNext: index !== runner.index, isLastSent: promptCaptured && runner.index === runner.runs.length - 1 };
+}
+
 function querySetMetadata() {
   if (!runner) return null;
   return buildQuerySetMetadata(runner.definition, runner.runs.length);
@@ -68,15 +75,16 @@ async function setRunner(definition) {
 }
 
 function renderRunner() {
-  const query = currentQuery();
+  const visible = visibleQueryState();
+  const query = visible.query;
   elements.queryCard.hidden = !query;
   if (!query) return;
-  elements.queryProgress.textContent = `진행 ${runner.index + 1} / ${runner.runs.length}`;
+  elements.queryProgress.textContent = visible.isLastSent ? "마지막 질문 전송됨" : visible.isNext ? `다음 질문 ${visible.index + 1} / ${runner.runs.length}` : `진행 ${visible.index + 1} / ${runner.runs.length}`;
   elements.queryText.textContent = query.expected_prompt;
-  elements.queryMeta.textContent = `반복 ${query.repetition}회차`;
+  elements.queryMeta.textContent = visible.isNext ? `바로 복사할 수 있습니다 · 반복 ${query.repetition}회차` : `반복 ${query.repetition}회차`;
   const active = Boolean(latestStatus?.measuring);
-  elements.nextQuery.disabled = !active || runner.index >= runner.runs.length - 1;
-  elements.copyQuery.disabled = false;
+  elements.nextQuery.disabled = !active || runner.index >= runner.runs.length - 1 || !latestStatus?.current_conversation_complete;
+  elements.copyQuery.disabled = visible.isLastSent;
   elements.prepareQueryList.disabled = active;
   elements.loadQuerySet.disabled = active;
   elements.clearQuerySet.disabled = active;
@@ -154,7 +162,7 @@ elements.clearQuerySet.addEventListener("click", async () => {
 });
 
 elements.copyQuery.addEventListener("click", async () => {
-  const query = currentQuery();
+  const query = visibleQueryState().query;
   if (!query) return;
   try {
     await navigator.clipboard.writeText(query.expected_prompt);
@@ -173,13 +181,17 @@ elements.start.addEventListener("click", async () => {
 
 elements.nextQuery.addEventListener("click", async () => {
   if (!runner || runner.index >= runner.runs.length - 1) return;
+  if (!latestStatus?.current_conversation_complete) {
+    showMessage("현재 답변이 끝난 뒤 다음 측정을 시작할 수 있습니다.");
+    return;
+  }
   const previousIndex = runner.index;
   runner.index += 1;
   try {
     render(await request("observer:new-conversation", { query_metadata: currentQuery() }));
     await saveRunner();
     renderRunner();
-    showMessage("다음 대화 경계를 기록했습니다. 임시 채팅으로 전환한 뒤 질문을 복사·전송하세요.", true);
+    showMessage("다음 질문을 새 대화에 연결했습니다. 임시 채팅으로 전환한 뒤 복사한 질문을 전송하세요.", true);
   } catch (error) {
     runner.index = previousIndex;
     renderRunner();
@@ -222,7 +234,7 @@ async function initialize() {
   }
   renderRunner();
   refresh();
-  setInterval(refresh, 1500);
+  setInterval(refresh, 750);
 }
 
 initialize();
