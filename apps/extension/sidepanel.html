@@ -22,6 +22,18 @@
         </div>
       </section>
 
+      <section class="start-card">
+        <label class="field">
+          <span>측정 방식</span>
+          <select id="measurement-type">
+            <option value="independent_query">여러 질문을 각각 측정</option>
+            <option value="conversation_journey">하나의 대화를 이어서 측정</option>
+          </select>
+        </label>
+        <button id="start" class="primary start-button">측정 시작</button>
+        <p>질문을 준비한 뒤 이 버튼을 누르세요.</p>
+      </section>
+
       <section class="runner" id="query-runner">
         <h2>측정할 질문</h2>
         <p class="runner-help">질문을 한 줄에 하나씩 입력하세요.</p>
@@ -52,14 +64,6 @@
       </section>
 
       <section class="actions">
-        <label class="field">
-          <span>측정 유형</span>
-          <select id="measurement-type">
-            <option value="independent_query">독립 질문</option>
-            <option value="conversation_journey">연속 대화</option>
-          </select>
-        </label>
-        <button id="start" class="primary">측정 시작</button>
         <button id="new-conversation" disabled>새 대화로 분리</button>
         <button id="stop" disabled>측정 중지</button>
         <button id="export" disabled>JSON 내려받기</button>
