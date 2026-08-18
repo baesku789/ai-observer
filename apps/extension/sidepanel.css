@@ -22,7 +22,10 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: 31px; font-weight: 500; 
 .runner-help { margin: 0 0 10px; color: #656d68; font-size: 12px; }
 .runner textarea { width: 100%; resize: vertical; padding: 10px; border: 1px solid #c9c7bf; border-radius: 9px; color: #26312b; background: white; font: inherit; font-size: 13px; line-height: 1.5; }
 .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
-.query-card { display: grid; gap: 7px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e1ded5; }
+.runner-feedback { margin: 10px 0 0; padding: 9px 10px; border-radius: 8px; color: #59635d; background: #f1efe8; font-size: 12px; line-height: 1.45; }
+.runner-feedback.success { color: #245b42; background: #e3f2e9; }
+.runner-feedback.error { color: #8d3025; background: #f9e8e4; }
+.query-card { display: grid; gap: 7px; margin-top: 12px; padding: 12px; border: 1px solid #cddfd5; border-radius: 10px; background: #f8fcf9; }
 .query-card strong { font-size: 14px; line-height: 1.45; }
 .query-progress { color: #41705a; font-size: 11px; font-weight: 800; letter-spacing: .06em; }
 .query-meta { color: #747b76; font-size: 11px; }
@@ -35,6 +38,7 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: 31px; font-weight: 500; 
 .advanced-import button { margin-top: 7px; }
 button { width: 100%; padding: 11px 14px; border: 1px solid #c9c7bf; border-radius: 10px; color: #26312b; background: #fffdf8; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 button.primary { border-color: #234d3a; color: white; background: #234d3a; }
+button.confirmed { border-color: #2d6a4f; color: white; background: #2d6a4f; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 .notice { padding-top: 5px; border-top: 1px solid #d9d5c9; }
 .notice h2 { margin: 15px 0 7px; font-size: 13px; }

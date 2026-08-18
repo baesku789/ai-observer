@@ -10,6 +10,7 @@ const elements = {
   label: document.querySelector("#status-label"),
   detail: document.querySelector("#status-detail"),
   message: document.querySelector("#message"),
+  runnerFeedback: document.querySelector("#runner-feedback"),
   queryListInput: document.querySelector("#query-list-input"),
   queryRepetitions: document.querySelector("#query-repetitions"),
   prepareQueryList: document.querySelector("#prepare-query-list"),
@@ -26,6 +27,8 @@ const elements = {
 
 let runner = null;
 let latestStatus = null;
+let lastAnnouncedVisibleIndex = null;
+const buttonTimers = new WeakMap();
 
 async function activeChatGptTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -66,11 +69,35 @@ async function saveRunner() {
   else await chrome.storage.local.remove("queryRunner");
 }
 
-async function setRunner(definition) {
+function showRunnerFeedback(message, type = "neutral") {
+  elements.runnerFeedback.classList.toggle("success", type === "success");
+  elements.runnerFeedback.classList.toggle("error", type === "error");
+  elements.runnerFeedback.textContent = message;
+}
+
+function flashButton(button, label, duration = 1600) {
+  clearTimeout(buttonTimers.get(button));
+  const originalLabel = button.dataset.defaultLabel || button.textContent;
+  button.dataset.defaultLabel = originalLabel;
+  button.textContent = label;
+  button.classList.add("confirmed");
+  const timer = setTimeout(() => {
+    button.textContent = originalLabel;
+    button.classList.remove("confirmed");
+    buttonTimers.delete(button);
+  }, duration);
+  buttonTimers.set(button, timer);
+}
+
+async function setRunner(definition, sourceButton = elements.prepareQueryList) {
   runner = { definition, runs: expandQuerySet(definition), index: 0 };
+  lastAnnouncedVisibleIndex = 0;
   elements.measurementType.value = "independent_query";
   await saveRunner();
   renderRunner();
+  flashButton(sourceButton, "✓ 준비 완료");
+  showRunnerFeedback(`질문 ${definition.queries.length}개 · 총 ${runner.runs.length}회 준비됨. 아래 첫 질문을 복사하세요.`, "success");
+  requestAnimationFrame(() => elements.queryCard.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   showMessage(`질문 ${definition.queries.length}개, 총 ${runner.runs.length}회 측정을 준비했습니다.`, true);
 }
 
@@ -82,6 +109,10 @@ function renderRunner() {
   elements.queryProgress.textContent = visible.isLastSent ? "마지막 질문 전송됨" : visible.isNext ? `다음 질문 ${visible.index + 1} / ${runner.runs.length}` : `진행 ${visible.index + 1} / ${runner.runs.length}`;
   elements.queryText.textContent = query.expected_prompt;
   elements.queryMeta.textContent = visible.isNext ? `바로 복사할 수 있습니다 · 반복 ${query.repetition}회차` : `반복 ${query.repetition}회차`;
+  if (visible.isNext && lastAnnouncedVisibleIndex !== visible.index) {
+    showRunnerFeedback("현재 질문이 수집됐습니다. 다음 질문을 바로 복사할 수 있습니다.", "success");
+  }
+  lastAnnouncedVisibleIndex = visible.index;
   const active = Boolean(latestStatus?.measuring);
   elements.nextQuery.disabled = !active || runner.index >= runner.runs.length - 1 || !latestStatus?.current_conversation_prompt_count;
   elements.copyQuery.disabled = visible.isLastSent;
@@ -142,22 +173,24 @@ async function perform(type) {
 elements.prepareQueryList.addEventListener("click", async () => {
   try {
     await setRunner(createQuerySetFromText(elements.queryListInput.value, elements.queryRepetitions.value));
-  } catch (error) { showMessage(error.message); }
+  } catch (error) { showRunnerFeedback(error.message, "error"); showMessage(error.message); }
 });
 
 elements.loadQuerySet.addEventListener("click", async () => {
   try {
-    await setRunner(JSON.parse(elements.querySetInput.value));
-  } catch (error) { showMessage(error.message); }
+    await setRunner(JSON.parse(elements.querySetInput.value), elements.loadQuerySet);
+  } catch (error) { showRunnerFeedback(`JSON을 확인해 주세요: ${error.message}`, "error"); showMessage(error.message); }
 });
 
 elements.clearQuerySet.addEventListener("click", async () => {
   runner = null;
+  lastAnnouncedVisibleIndex = null;
   elements.queryListInput.value = "";
   elements.queryRepetitions.value = "1";
   elements.querySetInput.value = "";
   await saveRunner();
   renderRunner();
+  showRunnerFeedback("초기화했습니다. 새 질문을 입력해 주세요.");
   showMessage("질문 세트를 초기화했습니다.", true);
 });
 
@@ -166,8 +199,10 @@ elements.copyQuery.addEventListener("click", async () => {
   if (!query) return;
   try {
     await navigator.clipboard.writeText(query.expected_prompt);
+    flashButton(elements.copyQuery, "✓ 복사됨");
+    showRunnerFeedback("클립보드에 복사했습니다. ChatGPT 입력창에 붙여넣으세요.", "success");
     showMessage("질문을 복사했습니다.", true);
-  } catch (error) { showMessage(`질문 복사에 실패했습니다: ${error.message}`); }
+  } catch (error) { showRunnerFeedback(`복사에 실패했습니다: ${error.message}`, "error"); showMessage(`질문 복사에 실패했습니다: ${error.message}`); }
 });
 
 elements.start.addEventListener("click", async () => {
@@ -182,6 +217,7 @@ elements.start.addEventListener("click", async () => {
 elements.nextQuery.addEventListener("click", async () => {
   if (!runner || runner.index >= runner.runs.length - 1) return;
   if (!latestStatus?.current_conversation_prompt_count) {
+    showRunnerFeedback("현재 질문을 ChatGPT에 먼저 전송해 주세요.", "error");
     showMessage("현재 질문을 ChatGPT에 먼저 전송해 주세요.");
     return;
   }
@@ -191,10 +227,13 @@ elements.nextQuery.addEventListener("click", async () => {
     render(await request("observer:new-conversation", { query_metadata: currentQuery() }));
     await saveRunner();
     renderRunner();
+    flashButton(elements.nextQuery, "✓ 전환 완료");
+    showRunnerFeedback("다음 질문 측정으로 전환했습니다. 임시 채팅을 켠 뒤 복사한 질문을 전송하세요.", "success");
     showMessage("다음 질문을 새 대화에 연결했습니다. 임시 채팅으로 전환한 뒤 복사한 질문을 전송하세요.", true);
   } catch (error) {
     runner.index = previousIndex;
     renderRunner();
+    showRunnerFeedback(`다음 질문 전환에 실패했습니다: ${error.message}`, "error");
     showMessage(error.message);
   }
 });
