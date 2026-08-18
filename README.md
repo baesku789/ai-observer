@@ -44,6 +44,19 @@ ChatGPT 등 AI 서비스에서 실제 사용자가 보는 답변을 관측하고
 
 측정 시작 전에 화면에 있던 대화는 기준선으로만 사용하며 결과에 포함하지 않는다. 결과 파일은 기본적으로 `ai-observer/` 다운로드 폴더에 저장된다. HTML 조각에 화면상의 대화 내용이 포함되므로 외부 공유나 fixture 편입 전에 반드시 개인정보를 확인하고 익명화한다.
 
+### 질문 세트 실행
+
+여러 독립 질문을 같은 조건으로 반복 측정하려면 사이드패널의 **독립 질문 세트**에 [예제 JSON](examples/query-set.example.json)을 붙여 넣고 **질문 세트 불러오기**를 누른다. `repetitions`만큼 실행 순서가 자동으로 펼쳐진다.
+
+1. 첫 질문에서 **측정 시작**을 누른다.
+2. **질문 복사** 후 ChatGPT에 붙여 넣어 전송한다.
+3. 답변이 끝나면 ChatGPT에서 **새 채팅**을 연다.
+4. 사이드패널에서 **다음 질문으로 분리**를 누른다.
+5. ChatGPT의 **임시 채팅**을 켠 다음 다음 질문을 복사·전송한다.
+6. 마지막 답변이 끝나면 **측정 중지 → JSON 내려받기**를 누른다.
+
+각 대화에는 질문 세트 ID, 질문 ID, 분류, 반복 번호, 예상 질문과 실제 수집 질문의 일치 여부가 기록된다. 새 채팅의 기본 일반 모드는 질문 전 설정 이력으로 남고, 질문을 보낸 시점의 임시/일반 모드가 실질 질문 모드가 된다.
+
 ## 현재 익스텐션 동작
 
 - 사용자가 측정을 시작한 이후의 질문·답변 후보만 관측
@@ -71,6 +84,7 @@ ChatGPT 등 AI 서비스에서 실제 사용자가 보는 답변을 관측하고
 node --check apps/extension/background.js
 node --check apps/extension/content.js
 node --check apps/extension/sidepanel.js
+node --check apps/extension/query-set.js
 python3 -m json.tool apps/extension/manifest.json >/dev/null
 npm test
 ```

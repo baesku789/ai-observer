@@ -1,0 +1,18 @@
+{
+  "query_set_id": "clinic-discovery-ko-v1",
+  "version": "1.0.0",
+  "queries": [
+    {
+      "query_id": "recommend-local-clinic",
+      "category": "recommendation",
+      "text": "마곡에서 피부과 추천해줘",
+      "repetitions": 2
+    },
+    {
+      "query_id": "compare-treatment-options",
+      "category": "comparison",
+      "text": "마곡 피부과 중 여드름 치료로 비교해줘",
+      "repetitions": 1
+    }
+  ]
+}

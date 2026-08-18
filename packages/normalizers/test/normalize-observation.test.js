@@ -28,7 +28,7 @@ const raw = {
 
 test("citation pill과 link를 하나의 출처로 정규화한다", () => {
   const result = normalizeObservation(raw);
-  assert.equal(result.schema_version, "normalized-0.2.0");
+  assert.equal(result.schema_version, "normalized-0.3.0");
   assert.equal(result.sources.length, 1);
   assert.equal(result.source_summary.total_unique_sources, 1);
   assert.equal(result.source_summary.total_citation_occurrences, 1);
@@ -86,4 +86,27 @@ test("독립 질문 대화에 여러 turn이 있으면 경고한다", () => {
   const result = normalizeObservation(modern);
   const warning = result.normalization_warnings.find((item) => item.code === "independent_query_turn_count");
   assert.equal(warning.observed_turn_count, 2);
+});
+
+test("Collector 0.5 query metadata를 대화와 turn에 보존한다", () => {
+  const modern = structuredClone(raw);
+  modern.schema_version = "0.5.0-draft";
+  modern.measurement = { measurement_type: "independent_query", boundary_strategy: "user_confirmed", query_set: { query_set_id: "magok_v1", total_runs: 2 } };
+  const query = { query_set_id: "magok_v1", query_id: "q_001", category: "local", repetition: 1, expected_prompt: "마곡점 원장 이력은?", observed_prompt: "마곡점 원장 이력은?", prompt_match: "exact" };
+  modern.conversation_instances = [{ conversation_instance_id: "conversation_1", started_at: "2026-08-14T00:00:00Z", ended_at: null, boundary_source: "measurement_started", query, context_ids: ["context_1"], chat_modes: ["temporary"] }];
+  modern.turn_candidates[0].conversation_instance_id = "conversation_1";
+  const result = normalizeObservation(modern);
+  assert.equal(result.measurement.query_set.query_set_id, "magok_v1");
+  assert.deepEqual(result.conversations[0].query, query);
+  assert.deepEqual(result.turns[0].query, query);
+});
+
+test("질문 세트 예상 질문과 실제 질문의 불일치를 경고한다", () => {
+  const modern = structuredClone(raw);
+  modern.schema_version = "0.5.0-draft";
+  modern.measurement = { measurement_type: "independent_query", boundary_strategy: "user_confirmed", query_set: { query_set_id: "magok_v1", total_runs: 1 } };
+  modern.conversation_instances = [{ conversation_instance_id: "conversation_1", boundary_source: "measurement_started", query: { query_set_id: "magok_v1", query_id: "q_001", category: "local", repetition: 1, expected_prompt: "예상 질문", observed_prompt: "다른 질문", prompt_match: "mismatch" }, context_ids: ["context_1"], chat_modes: ["temporary"] }];
+  modern.turn_candidates[0].conversation_instance_id = "conversation_1";
+  const result = normalizeObservation(modern);
+  assert.equal(result.normalization_warnings.find((warning) => warning.code === "query_prompt_mismatch")?.query_id, "q_001");
 });

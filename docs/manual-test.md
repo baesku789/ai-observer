@@ -21,6 +21,17 @@ Chrome 웹 UI는 수시로 바뀔 수 있으므로 릴리스 전 아래 항목�
 - 연속 대화에서는 여러 turn이 하나의 `conversation_instance_id`에 연결된다.
 - 새 채팅의 `regular → temporary` 전환은 별도 대화가 아니라 질문 전 설정 이력으로 남고, 질문 시점의 실질 모드는 `temporary`가 된다.
 
+## 질문 세트 Runner
+
+- 유효한 JSON을 불러오면 `repetitions`를 포함한 전체 실행 수와 첫 질문이 표시된다.
+- 중복 `query_id`, 빈 질문, 1~20 범위 밖의 반복 횟수는 거부된다.
+- **질문 복사**가 현재 표시된 질문만 클립보드에 넣는다.
+- 측정 중 **다음 질문으로 분리**를 누르면 `conversation_instance_id`와 현재 `query_id`가 함께 바뀐다.
+- 사이드패널을 닫았다 다시 열어도 현재 질문 순서가 유지된다.
+- 내려받은 JSON의 각 `conversation_instances[].query`에 질문 ID, 분류, 반복 번호가 기록된다.
+- 실제 질문이 예상 질문과 다르면 `prompt_match: mismatch`와 `query_prompt_mismatch` 경고가 기록된다.
+- Normalizer 출력에서 질문 세트 메타데이터가 measurement, conversation, turn에 보존된다.
+
 ## 탐사 케이스
 
 - 검색 없는 일반 답변

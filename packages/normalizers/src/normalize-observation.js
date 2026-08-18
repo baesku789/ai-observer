@@ -14,7 +14,7 @@ function detectLanguage(text) {
 function validateRaw(raw) {
   const errors = [];
   if (!raw || typeof raw !== "object") errors.push("root must be an object");
-  if (!/^0\.(2|3|4)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
+  if (!/^0\.(2|3|4|5)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
   if (!Array.isArray(raw?.turn_candidates)) errors.push("turn_candidates must be an array");
   if (errors.length) throw new Error(`Invalid raw observation: ${errors.join("; ")}`);
 }
@@ -111,8 +111,11 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
     const turnChatModes = [...new Set(conversationTurns.map((turn) => turn.chat_mode).filter(Boolean))];
     const effectiveChatMode = turnChatModes.length === 1 ? turnChatModes[0] : turnChatModes.length > 1 ? "mixed" : null;
     if (measurementType === "independent_query" && conversationTurns.filter((turn) => turn.question).length !== 1) warnings.push({ code: "independent_query_turn_count", severity: "warning", conversation_instance_id: conversation.conversation_instance_id, observed_turn_count: conversationTurns.filter((turn) => turn.question).length });
-    return { conversation_instance_id: conversation.conversation_instance_id, started_at: conversation.started_at, ended_at: conversation.ended_at, boundary_source: conversation.boundary_source, setup_chat_modes: conversation.chat_modes || [], effective_chat_mode: effectiveChatMode, turn_chat_modes: turnChatModes, context_ids: conversation.context_ids || [], turn_ids: conversationTurns.map((turn) => turn.turn_id), turn_count: conversationTurns.length };
+    if (conversation.query?.prompt_match === "mismatch") warnings.push({ code: "query_prompt_mismatch", severity: "warning", conversation_instance_id: conversation.conversation_instance_id, query_id: conversation.query.query_id, expected_prompt: conversation.query.expected_prompt, observed_prompt: conversation.query.observed_prompt });
+    return { conversation_instance_id: conversation.conversation_instance_id, started_at: conversation.started_at, ended_at: conversation.ended_at, boundary_source: conversation.boundary_source, query: conversation.query || null, setup_chat_modes: conversation.chat_modes || [], effective_chat_mode: effectiveChatMode, turn_chat_modes: turnChatModes, context_ids: conversation.context_ids || [], turn_ids: conversationTurns.map((turn) => turn.turn_id), turn_count: conversationTurns.length };
   });
+  const queryByConversation = new Map(conversations.map((conversation) => [conversation.conversation_instance_id, conversation.query]));
+  for (const turn of turns) turn.query = queryByConversation.get(turn.conversation_instance_id) || null;
 
   const sources = [...sourceMap.values()].map((source) => ({ ...source, original_urls: [...source.original_urls], observations: { ...source.observations, turn_ids: [...source.observations.turn_ids] } })).sort((a, b) => a.source_id.localeCompare(b.source_id));
   const byOwnership = {};
@@ -129,10 +132,10 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
   const byOwner = [...byOwnerMap.values()].map((item) => ({ entity_id: item.entity_id, unique_page_count: item.source_ids.size, citation_count: item.citation_count, turn_count: item.turn_ids.size, page_types: item.page_types }));
 
   return {
-    schema_version: "normalized-0.2.0",
-    normalizer: { name: "chatgpt-web-normalizer", version: "0.2.0" },
+    schema_version: "normalized-0.3.0",
+    normalizer: { name: "chatgpt-web-normalizer", version: "0.3.0" },
     provenance: { raw_schema_version: raw.schema_version, observation_id: raw.observation_id, run_id: raw.run_id, source_captured_at: raw.captured_at },
-    measurement: { measurement_type: measurementType, boundary_strategy: raw.measurement?.boundary_strategy || "legacy_inferred" },
+    measurement: { measurement_type: measurementType, boundary_strategy: raw.measurement?.boundary_strategy || "legacy_inferred", query_set: raw.measurement?.query_set || null },
     environment: { surface: raw.surface, chat_modes: [...new Set((raw.chat_contexts || []).map((context) => context.chat_mode))], displayed_model: raw.environment?.displayed_model ?? null, displayed_mode: raw.environment?.displayed_mode ?? null, locale: raw.environment?.locale ?? null },
     conversations,
     turns,

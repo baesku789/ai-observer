@@ -1,3 +1,5 @@
+import { expandQuerySet, querySetMetadata as buildQuerySetMetadata } from "./query-set.js";
+
 const elements = {
   start: document.querySelector("#start"),
   newConversation: document.querySelector("#new-conversation"),
@@ -7,8 +9,20 @@ const elements = {
   dot: document.querySelector("#status-dot"),
   label: document.querySelector("#status-label"),
   detail: document.querySelector("#status-detail"),
-  message: document.querySelector("#message")
+  message: document.querySelector("#message"),
+  querySetInput: document.querySelector("#query-set-input"),
+  loadQuerySet: document.querySelector("#load-query-set"),
+  clearQuerySet: document.querySelector("#clear-query-set"),
+  queryCard: document.querySelector("#query-card"),
+  queryProgress: document.querySelector("#query-progress"),
+  queryText: document.querySelector("#query-text"),
+  queryMeta: document.querySelector("#query-meta"),
+  copyQuery: document.querySelector("#copy-query"),
+  nextQuery: document.querySelector("#next-query")
 };
+
+let runner = null;
+let latestStatus = null;
 
 async function activeChatGptTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -28,28 +42,64 @@ async function request(type, payload = {}) {
   }
 }
 
+function currentQuery() {
+  return runner?.runs[runner.index] || null;
+}
+
+function querySetMetadata() {
+  if (!runner) return null;
+  return buildQuerySetMetadata(runner.definition, runner.runs.length);
+}
+
+async function saveRunner() {
+  if (runner) await chrome.storage.local.set({ queryRunner: runner });
+  else await chrome.storage.local.remove("queryRunner");
+}
+
+function renderRunner() {
+  const query = currentQuery();
+  elements.queryCard.hidden = !query;
+  if (!query) return;
+  elements.queryProgress.textContent = `질문 실행 ${runner.index + 1} / ${runner.runs.length}`;
+  elements.queryText.textContent = query.expected_prompt;
+  elements.queryMeta.textContent = `${query.query_id} · ${query.category} · 반복 ${query.repetition}`;
+  const active = Boolean(latestStatus?.measuring);
+  elements.nextQuery.disabled = !active || runner.index >= runner.runs.length - 1;
+  elements.copyQuery.disabled = false;
+  elements.loadQuerySet.disabled = active;
+  elements.clearQuerySet.disabled = active;
+}
+
 function render(status) {
+  latestStatus = status;
   const active = Boolean(status?.measuring);
+  const runnerActive = Boolean(currentQuery()) && elements.measurementType.value === "independent_query";
   elements.dot.classList.toggle("active", active);
   elements.label.textContent = active ? "측정 중" : "측정 준비됨";
   elements.detail.textContent = active
     ? `${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"} · 대화 ${status.conversation_count}개 · 후보 ${status.candidate_count}개`
     : status?.run_id ? `대화 ${status.conversation_count}개 · 수집 후보 ${status.candidate_count}개 · 내려받을 수 있습니다.` : "측정 시작 이후의 새 대화만 기록합니다.";
   elements.start.disabled = active;
-  elements.newConversation.disabled = !active;
+  elements.newConversation.disabled = !active || runnerActive;
   elements.stop.disabled = !active;
   elements.export.disabled = !status?.run_id;
   elements.measurementType.disabled = active;
+  elements.loadQuerySet.disabled = active;
+  elements.clearQuerySet.disabled = active;
+  renderRunner();
+}
+
+function showMessage(message, success = false) {
+  elements.message.style.color = success ? "#2d6a4f" : "#a33a2b";
+  elements.message.textContent = message;
 }
 
 async function refresh() {
-  try {
-    elements.message.textContent = "";
-    render(await request("observer:status"));
-  } catch (error) {
+  try { render(await request("observer:status")); }
+  catch (error) {
     elements.label.textContent = "ChatGPT 연결 필요";
     elements.detail.textContent = "ChatGPT 탭을 선택하거나 새로고침하세요.";
-    elements.message.textContent = error.message;
+    showMessage(error.message);
     elements.start.disabled = true;
     elements.newConversation.disabled = true;
     elements.stop.disabled = true;
@@ -58,28 +108,70 @@ async function refresh() {
 }
 
 async function perform(type) {
-  try {
-    elements.message.textContent = "";
-    render(await request(type));
-  } catch (error) {
-    elements.message.textContent = error.message;
-  }
+  try { render(await request(type)); }
+  catch (error) { showMessage(error.message); }
 }
+
+elements.loadQuerySet.addEventListener("click", async () => {
+  try {
+    const definition = JSON.parse(elements.querySetInput.value);
+    runner = { definition, runs: expandQuerySet(definition), index: 0 };
+    elements.measurementType.value = "independent_query";
+    await saveRunner();
+    renderRunner();
+    showMessage(`${runner.runs.length}개 질문 실행을 준비했습니다.`, true);
+  } catch (error) { showMessage(error.message); }
+});
+
+elements.clearQuerySet.addEventListener("click", async () => {
+  runner = null;
+  elements.querySetInput.value = "";
+  await saveRunner();
+  renderRunner();
+  showMessage("질문 세트를 초기화했습니다.", true);
+});
+
+elements.copyQuery.addEventListener("click", async () => {
+  const query = currentQuery();
+  if (!query) return;
+  try {
+    await navigator.clipboard.writeText(query.expected_prompt);
+    showMessage("질문을 복사했습니다.", true);
+  } catch (error) { showMessage(`질문 복사에 실패했습니다: ${error.message}`); }
+});
 
 elements.start.addEventListener("click", async () => {
   try {
-    elements.message.textContent = "";
-    render(await request("observer:start", { measurement_type: elements.measurementType.value }));
-  } catch (error) { elements.message.textContent = error.message; }
+    const measurementType = elements.measurementType.value;
+    if (measurementType === "independent_query" && runner && !currentQuery()) throw new Error("실행할 질문이 없습니다.");
+    render(await request("observer:start", { measurement_type: measurementType, query_metadata: measurementType === "independent_query" ? currentQuery() : null, query_set: measurementType === "independent_query" ? querySetMetadata() : null }));
+    showMessage("측정을 시작했습니다.", true);
+  } catch (error) { showMessage(error.message); }
 });
+
+elements.nextQuery.addEventListener("click", async () => {
+  if (!runner || runner.index >= runner.runs.length - 1) return;
+  const previousIndex = runner.index;
+  runner.index += 1;
+  try {
+    render(await request("observer:new-conversation", { query_metadata: currentQuery() }));
+    await saveRunner();
+    renderRunner();
+    showMessage("다음 대화 경계를 기록했습니다. 임시 채팅으로 전환한 뒤 질문을 복사·전송하세요.", true);
+  } catch (error) {
+    runner.index = previousIndex;
+    renderRunner();
+    showMessage(error.message);
+  }
+});
+
 elements.newConversation.addEventListener("click", async () => {
   try {
-    elements.message.textContent = "";
     render(await request("observer:new-conversation"));
-    elements.message.style.color = "#2d6a4f";
-    elements.message.textContent = "새 대화 경계를 기록했습니다. 이제 질문을 입력하세요.";
-  } catch (error) { elements.message.style.color = "#a33a2b"; elements.message.textContent = error.message; }
+    showMessage("새 대화 경계를 기록했습니다. 이제 질문을 입력하세요.", true);
+  } catch (error) { showMessage(error.message); }
 });
+
 elements.stop.addEventListener("click", () => perform("observer:stop"));
 elements.export.addEventListener("click", async () => {
   try {
@@ -89,13 +181,23 @@ elements.export.addEventListener("click", async () => {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     await chrome.downloads.download({ url, filename: `ai-observer/raw-observation-${stamp}.json`, saveAs: true });
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    elements.message.style.color = "#2d6a4f";
-    elements.message.textContent = "JSON 파일을 만들었습니다.";
-  } catch (error) {
-    elements.message.style.color = "#a33a2b";
-    elements.message.textContent = error.message;
-  }
+    showMessage("JSON 파일을 만들었습니다.", true);
+  } catch (error) { showMessage(error.message); }
 });
 
-refresh();
-setInterval(refresh, 1500);
+async function initialize() {
+  const stored = await chrome.storage.local.get("queryRunner");
+  if (stored.queryRunner) {
+    try {
+      runner = stored.queryRunner;
+      runner.runs = expandQuerySet(runner.definition);
+      if (runner.index >= runner.runs.length) runner.index = 0;
+      elements.querySetInput.value = JSON.stringify(runner.definition, null, 2);
+    } catch (_) { runner = null; }
+  }
+  renderRunner();
+  refresh();
+  setInterval(refresh, 1500);
+}
+
+initialize();

@@ -1,8 +1,8 @@
 (() => {
-  const SCHEMA_VERSION = "0.4.0-draft";
-  const COLLECTOR_VERSION = "0.4.0";
+  const SCHEMA_VERSION = "0.5.0-draft";
+  const COLLECTOR_VERSION = "0.5.0";
   const QUIET_PERIOD_MS = 1500;
-  const state = { measuring: false, measurementType: "independent_query", runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
+  const state = { measuring: false, measurementType: "independent_query", querySet: null, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
 
   const now = () => new Date().toISOString();
   const makeId = (prefix) => `${prefix}_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
@@ -153,7 +153,7 @@
     if (!state.warnings.some((warning) => warning.code === code && warning.context_id === contextId)) state.warnings.push({ warning_id: makeId("warning"), code, message, captured_at: now(), context_id: contextId });
   }
 
-  function openConversation(boundarySource) {
+  function openConversation(boundarySource, queryMetadata = null) {
     if (!state.measuring) return status();
     const capturedAt = now();
     const previous = state.currentConversation;
@@ -163,6 +163,7 @@
       started_at: capturedAt,
       ended_at: null,
       boundary_source: boundarySource,
+      query: queryMetadata,
       context_ids: state.currentContext ? [state.currentContext.context_id] : [],
       chat_modes: state.currentContext ? [state.currentContext.chat_mode] : []
     };
@@ -197,11 +198,11 @@
     clearTimeout(state.scanTimer); clearTimeout(state.quietTimer);
     state.scanTimer = setTimeout(scan, 250); state.quietTimer = setTimeout(scan, QUIET_PERIOD_MS + 50);
   }
-  function start(measurementType = "independent_query") {
+  function start(measurementType = "independent_query", queryMetadata = null, querySet = null) {
     if (state.measuring) return status();
     if (!["independent_query", "conversation_journey"].includes(measurementType)) throw new Error("지원하지 않는 측정 유형입니다.");
-    Object.assign(state, { measuring: true, measurementType, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null });
-    state.records.clear(); openContext("measurement_started", true); openConversation("measurement_started");
+    Object.assign(state, { measuring: true, measurementType, querySet, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null });
+    state.records.clear(); openContext("measurement_started", true); openConversation("measurement_started", queryMetadata);
     state.observer = new MutationObserver(scheduleScan);
     state.observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["href", "aria-label", "data-testid", "data-citation"] });
     state.contextTimer = setInterval(scan, 1000);
@@ -213,7 +214,7 @@
     state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); clearInterval(state.contextTimer); state.contextTimer = null; return status();
   }
   function status() {
-    return { measuring: state.measuring, measurement_type: state.measurementType, run_id: state.runId, started_at: state.startedAt, candidate_count: state.records.size, context_count: state.contexts.length, conversation_count: state.conversations.length, conversation_instance_id: state.currentConversation?.conversation_instance_id || null, chat_mode: state.currentContext?.chat_mode || null, warning_count: state.warnings.length };
+    return { measuring: state.measuring, measurement_type: state.measurementType, run_id: state.runId, started_at: state.startedAt, candidate_count: state.records.size, context_count: state.contexts.length, conversation_count: state.conversations.length, conversation_instance_id: state.currentConversation?.conversation_instance_id || null, current_query: state.currentConversation?.query || null, chat_mode: state.currentContext?.chat_mode || null, warning_count: state.warnings.length };
   }
   function buildTurns() {
     const turns = []; const currentByConversation = new Map();
@@ -233,21 +234,29 @@
     if (!model) addWarning("displayed_model_not_found", "표시된 모델을 확인하지 못했습니다. UI 후보 증거를 확인하세요.");
     if (!mode) addWarning("displayed_mode_not_found", "표시된 응답 모드를 확인하지 못했습니다. UI 후보 증거를 확인하세요.");
     const turns = buildTurns();
+    const normalizedPrompt = (value) => (value || "").replace(/\s+/g, " ").trim();
+    const serializedConversations = state.conversations.map((conversation) => {
+      const firstPrompt = turns.find((turn) => turn.conversation_instance_id === conversation.conversation_instance_id && turn.prompt)?.prompt?.text || null;
+      const expectedPrompt = conversation.query?.expected_prompt || null;
+      const promptMatch = !expectedPrompt || !firstPrompt ? "unavailable" : firstPrompt === expectedPrompt ? "exact" : normalizedPrompt(firstPrompt) === normalizedPrompt(expectedPrompt) ? "normalized" : "mismatch";
+      return { ...conversation, query: conversation.query ? { ...conversation.query, observed_prompt: firstPrompt, prompt_match: promptMatch } : null };
+    });
     if (state.measurementType === "independent_query") {
-      for (const conversation of state.conversations) {
+      for (const conversation of serializedConversations) {
         const count = turns.filter((turn) => turn.conversation_instance_id === conversation.conversation_instance_id && turn.prompt).length;
         if (count !== 1 && !state.warnings.some((warning) => warning.code === "independent_query_turn_count" && warning.conversation_instance_id === conversation.conversation_instance_id)) state.warnings.push({ warning_id: makeId("warning"), code: "independent_query_turn_count", message: `독립 질문 대화에는 질문이 1개여야 하지만 ${count}개가 수집됐습니다.`, captured_at: capturedAt, conversation_instance_id: conversation.conversation_instance_id, observed_turn_count: count });
+        if (conversation.query?.prompt_match === "mismatch" && !state.warnings.some((warning) => warning.code === "query_prompt_mismatch" && warning.conversation_instance_id === conversation.conversation_instance_id)) state.warnings.push({ warning_id: makeId("warning"), code: "query_prompt_mismatch", message: "질문 세트의 예상 질문과 실제 질문이 다릅니다.", captured_at: capturedAt, conversation_instance_id: conversation.conversation_instance_id, query_id: conversation.query.query_id, expected_prompt: conversation.query.expected_prompt, observed_prompt: conversation.query.observed_prompt });
       }
     }
-    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, measurement: { measurement_type: state.measurementType, boundary_strategy: "user_confirmed" }, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, displayed_model: model?.value || null, displayed_model_evidence: model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, conversation_instances: state.conversations, conversation_events: state.conversationEvents, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: turns, capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
+    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, measurement: { measurement_type: state.measurementType, boundary_strategy: "user_confirmed", query_set: state.querySet }, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, displayed_model: model?.value || null, displayed_model_evidence: model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, conversation_instances: serializedConversations, conversation_events: state.conversationEvents, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: turns, capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
   }
 
   window.addEventListener("popstate", () => { if (state.measuring) setTimeout(scan, 100); });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
-      if (message?.type === "observer:start") sendResponse({ ok: true, data: start(message.measurement_type) });
-      else if (message?.type === "observer:new-conversation") sendResponse({ ok: true, data: openConversation("user_confirmed") });
+      if (message?.type === "observer:start") sendResponse({ ok: true, data: start(message.measurement_type, message.query_metadata, message.query_set) });
+      else if (message?.type === "observer:new-conversation") sendResponse({ ok: true, data: openConversation("user_confirmed", message.query_metadata) });
       else if (message?.type === "observer:stop") sendResponse({ ok: true, data: stop() });
       else if (message?.type === "observer:status") sendResponse({ ok: true, data: status() });
       else if (message?.type === "observer:export") sendResponse({ ok: true, data: observation() });

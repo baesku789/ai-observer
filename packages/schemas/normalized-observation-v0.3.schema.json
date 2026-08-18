@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-observer.local/schemas/normalized-observation-v0.3.schema.json",
+  "title": "AI Observer Normalized Observation v0.3",
+  "type": "object",
+  "required": ["schema_version", "normalizer", "provenance", "measurement", "environment", "conversations", "turns", "sources", "source_summary", "normalization_warnings"],
+  "properties": {
+    "schema_version": { "const": "normalized-0.3.0" },
+    "measurement": { "type": "object", "required": ["measurement_type", "boundary_strategy", "query_set"] },
+    "conversations": { "type": "array" },
+    "turns": { "type": "array" },
+    "sources": { "type": "array" },
+    "normalization_warnings": { "type": "array" }
+  }
+}

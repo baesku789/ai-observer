@@ -5,7 +5,6 @@
   "scripts": {
     "normalize": "node packages/normalizers/cli.js",
     "test": "node --test packages/normalizers/test/*.test.js",
-    "check": "node --check apps/extension/content.js && node --check packages/normalizers/cli.js"
+    "check": "node --check apps/extension/background.js && node --check apps/extension/content.js && node --check apps/extension/sidepanel.js && node --check apps/extension/query-set.js && node --check packages/normalizers/cli.js"
   }
 }
-
