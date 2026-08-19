@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "rule_id": "mapbox_homepage_attribution",
+      "hosts": ["mapbox.com", "www.mapbox.com"],
+      "path_exact": ["/"],
+      "aria_label_contains": ["mapbox homepage"],
+      "classification": "map_attribution"
+    },
+    {
+      "rule_id": "mapbox_maps_attribution",
+      "hosts": ["mapbox.com", "www.mapbox.com"],
+      "path_exact": ["/about/maps"],
+      "text_contains": ["mapbox"],
+      "classification": "map_attribution"
+    },
+    {
+      "rule_id": "mapbox_terms_attribution",
+      "hosts": ["mapbox.com", "www.mapbox.com"],
+      "path_exact": ["/legal/end-user-terms"],
+      "classification": "map_attribution"
+    },
+    {
+      "rule_id": "openstreetmap_about_attribution",
+      "hosts": ["openstreetmap.org", "www.openstreetmap.org"],
+      "path_exact": ["/about"],
+      "text_contains": ["openstreetmap"],
+      "classification": "map_attribution"
+    }
+  ]
+}

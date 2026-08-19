@@ -28,7 +28,7 @@ const raw = {
 
 test("citation pill과 link를 하나의 출처로 정규화한다", () => {
   const result = normalizeObservation(raw);
-  assert.equal(result.schema_version, "normalized-0.3.0");
+  assert.equal(result.schema_version, "normalized-0.4.0");
   assert.equal(result.sources.length, 1);
   assert.equal(result.source_summary.total_unique_sources, 1);
   assert.equal(result.source_summary.total_citation_occurrences, 1);
@@ -119,4 +119,41 @@ test("Collector 0.6 단일 탭과 목표 채팅 모드를 보존한다", () => {
   assert.equal(result.measurement.tab_scope, "single_tab");
   assert.equal(result.measurement.desired_chat_mode, "temporary");
   assert.equal(result.measurement.boundary_strategy, "user_confirmed_new_chat");
+});
+
+test("Collector 0.7 네트워크 모델 관측값을 환경과 턴에 보존한다", () => {
+  const modern = structuredClone(raw);
+  modern.schema_version = "0.7.0-draft";
+  modern.environment = { ...modern.environment, requested_model: "gpt-5-6", displayed_model: "GPT-5.6 Sol", model_detection_source: "network_request" };
+  modern.measurement = { measurement_type: "conversation_journey", boundary_strategy: "user_confirmed_new_chat", tab_scope: "single_tab", desired_chat_mode: "temporary", query_set: null };
+  modern.conversation_instances = [{ conversation_instance_id: "conversation_1", started_at: "2026-08-14T00:00:00Z", ended_at: null, boundary_source: "measurement_started", query: null, context_ids: ["context_1"], chat_modes: ["temporary"] }];
+  modern.turn_candidates[0].conversation_instance_id = "conversation_1";
+  modern.turn_candidates[0].model_observation = { requested_model: "gpt-5-6", displayed_model: "GPT-5.6 Sol", detection_source: "network_request", captured_at: "2026-08-14T00:00:01Z", client_prepare_dispatch: "immediate", client_prepare_source: "context_change", history_and_training_disabled: true };
+  const result = normalizeObservation(modern);
+  assert.equal(result.environment.requested_model, "gpt-5-6");
+  assert.equal(result.environment.model_detection_source, "network_request");
+  assert.equal(result.turns[0].model_observation.displayed_model, "GPT-5.6 Sol");
+  assert.deepEqual(result.conversations[0].requested_models, ["gpt-5-6"]);
+});
+
+test("지도 UI 보조 링크를 출처 집계에서 제외하되 표시 인용은 보존한다", () => {
+  const modern = structuredClone(raw);
+  const response = modern.turn_candidates[0].response_candidates[0];
+  response.citation_groups = [
+    { group_id: "group_clinic", canonical_url: "https://www.oganacell-magok.com/company/doctor.html" },
+    { group_id: "group_mapbox_citation", canonical_url: "https://www.mapbox.com/blog/cited-map-article" }
+  ];
+  response.link_candidates = [
+    { href: "https://www.mapbox.com/", aria_label: "Mapbox homepage" },
+    { href: "https://www.mapbox.com/about/maps", text: "Mapbox" },
+    { href: "https://www.mapbox.com/legal/end-user-terms", text: "약관" },
+    { href: "http://www.openstreetmap.org/about", text: "OpenStreetMap" },
+    { href: "https://www.mapbox.com/blog/cited-map-article", text: "인용된 지도 문서" }
+  ];
+  const result = normalizeObservation(modern);
+  assert.equal(result.turns[0].search_observation.source_count, 2);
+  assert.equal(result.turns[0].search_observation.excluded_auxiliary_link_count, 4);
+  assert.equal(result.turns[0].excluded_link_candidates.every((link) => link.reason === "map_attribution"), true);
+  assert.equal(result.sources.some((source) => source.canonical_url === "https://www.mapbox.com/blog/cited-map-article"), true);
+  assert.equal(result.sources.some((source) => source.canonical_url === "https://www.mapbox.com/about/maps"), false);
 });

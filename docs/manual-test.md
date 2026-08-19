@@ -17,7 +17,12 @@ Chrome 웹 UI는 수시로 바뀔 수 있으므로 릴리스 전 아래 항목�
 - 완료된 답변 대부분이 `quiet_candidate`로 기록된다.
 - 인용 하나의 pill과 link가 같은 `citation_group`으로 묶인다.
 - `citation_groups.length`가 화면에서 보이는 논리 인용 수와 일치한다.
-- 모델·응답 모드가 값과 DOM 증거로 기록되거나 탐사용 UI 후보가 남는다.
+- 모델 메뉴를 열지 않아도 질문별 `model_observation.requested_model`과 `displayed_model`이 기록된다.
+- 질문을 입력하거나 전송하면 측정 상태 카드에 감지된 화면 모델명이 표시된다.
+- `GPT-5.6 Sol` 선택 시 `gpt-5-6` 또는 `gpt-5-6-instant`, `GPT-5.5` 선택 시 `gpt-5-5-instant`가 해당 질문에 연결된다.
+- 모델을 질문 사이에 변경하면 각 turn에 당시 모델이 따로 기록된다.
+- 네트워크 모델 요청에서 질문 원문·헤더·토큰이 JSON에 저장되지 않는다.
+- 네트워크 모델 감지 실패 시 DOM 증거가 보조값으로 기록되거나 탐사용 UI 후보가 남는다.
 - 새 임시 채팅에서 **새 대화로 분리**를 누르면 `conversation_instance_id`가 바뀐다.
 - 독립 질문 대화에 질문이 두 개 이상이면 `independent_query_turn_count` 경고가 생긴다.
 - 연속 대화에서는 여러 turn이 하나의 `conversation_instance_id`에 연결된다.
@@ -54,6 +59,8 @@ Chrome 웹 UI는 수시로 바뀔 수 있으므로 릴리스 전 아래 항목�
 - 한국어, 영어, 중국어 번체
 - 사용 가능한 각 모델 및 모드
 - Sources 패널을 열기 전과 후
+- 지도 카드가 포함된 답변에서 Mapbox·OpenStreetMap 저작권/약관 링크가 출처 수에서 제외되고 `excluded_link_candidates`에 남는지 확인
+- Mapbox 문서 자체가 명시적으로 인용된 경우에는 보조 링크 규칙보다 인용이 우선하는지 확인
 
 ## 개인정보 확인
 

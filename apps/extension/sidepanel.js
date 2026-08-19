@@ -1,6 +1,6 @@
 import { createQuerySetFromPrompts, expandQuerySet, querySetMetadata } from "./query-set.js";
 
-const COLLECTOR_VERSION = "0.6.0";
+const COLLECTOR_VERSION = "0.7.0";
 
 const elements = Object.fromEntries([
   "start", "stop", "export", "measurement-type", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
@@ -197,8 +197,9 @@ function render(status, tabMismatch = false) {
   const active = Boolean(status?.measuring);
   elements.statusDot.classList.toggle("active", active);
   elements.statusLabel.textContent = active ? "측정 중" : status?.run_id ? "측정 종료" : "측정 준비";
+  const modelStatus = status?.current_displayed_model || status?.current_requested_model || "모델 대기";
   elements.statusDetail.textContent = active
-    ? `${status.question_count}/${status.total_runs || "-"} 질문 수집 · ${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"}`
+    ? `${status.question_count}/${status.total_runs || "-"} 질문 수집 · ${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"} · ${modelStatus}`
     : status?.run_id ? `질문 ${status.question_count}개 · 답변 ${status.answer_count}개` : "질문을 입력하고 측정을 시작하세요.";
   elements.tabWarning.hidden = !tabMismatch;
   elements.setup.hidden = active;

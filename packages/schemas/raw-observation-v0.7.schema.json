@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-observer.local/schemas/raw-observation-v0.7.schema.json",
+  "title": "AI Observer Raw Observation v0.7",
+  "type": "object",
+  "required": ["schema_version", "observation_id", "run_id", "surface", "measurement", "environment", "conversation_instances", "turn_candidates", "collector"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^0\\.7\\." },
+    "measurement": {
+      "type": "object",
+      "required": ["measurement_type", "boundary_strategy", "tab_scope", "desired_chat_mode"],
+      "properties": {
+        "measurement_type": { "enum": ["independent_query", "conversation_journey"] },
+        "boundary_strategy": { "const": "user_confirmed_new_chat" },
+        "tab_scope": { "const": "single_tab" },
+        "desired_chat_mode": { "enum": ["temporary", "regular"] },
+        "query_set": { "type": ["object", "null"] }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["requested_model", "displayed_model", "model_detection_source"],
+      "properties": {
+        "requested_model": { "type": ["string", "null"] },
+        "displayed_model": { "type": ["string", "null"] },
+        "model_detection_source": { "enum": ["network_request", "dom", null] }
+      }
+    },
+    "conversation_instances": { "type": "array" },
+    "turn_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "model_observation": { "$ref": "#/$defs/modelObservation" }
+        }
+      }
+    },
+    "collector": { "type": "object", "required": ["name", "version"] }
+  },
+  "$defs": {
+    "modelObservation": {
+      "type": ["object", "null"],
+      "properties": {
+        "requested_model": { "type": "string" },
+        "displayed_model": { "type": ["string", "null"] },
+        "detection_source": { "const": "network_request" },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "client_prepare_dispatch": { "type": ["string", "null"] },
+        "client_prepare_source": { "type": ["string", "null"] },
+        "history_and_training_disabled": { "type": ["boolean", "null"] }
+      },
+      "required": ["requested_model", "displayed_model", "detection_source", "captured_at"]
+    }
+  }
+}
