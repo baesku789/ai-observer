@@ -24,9 +24,12 @@ export function validateRaw(raw) {
   const conversations = new Map((raw.conversation_instances || []).map((conversation) => [conversation.conversation_instance_id, conversation]));
   const turns = raw.turn_candidates || [];
 
-  if (!/^0\.7\./.test(raw.schema_version || "")) errors.push(`raw schema가 0.7.x가 아닙니다: ${raw.schema_version || "missing"}`);
-  if (raw.collector?.version !== "0.7.0") errors.push(`Collector 버전이 0.7.0이 아닙니다: ${raw.collector?.version || "missing"}`);
+  if (!/^0\.8\./.test(raw.schema_version || "")) errors.push(`raw schema가 0.8.x가 아닙니다: ${raw.schema_version || "missing"}`);
+  if (raw.collector?.version !== "0.8.0") errors.push(`Collector 버전이 0.8.0이 아닙니다: ${raw.collector?.version || "missing"}`);
   if (raw.measurement?.tab_scope !== "single_tab") errors.push("tab_scope가 single_tab이 아닙니다.");
+  if (!["free", "plus", "max", "work", "unknown"].includes(raw.environment?.account_plan)) errors.push(`account_plan이 올바르지 않습니다: ${raw.environment?.account_plan || "missing"}`);
+  if (raw.environment?.account_plan === "unknown") warnings.push("계정 플랜이 unknown이므로 플랜별 비교에서 제외될 수 있습니다.");
+  if (!["default", "manually_selected"].includes(raw.environment?.model_selection)) errors.push(`model_selection이 올바르지 않습니다: ${raw.environment?.model_selection || "missing"}`);
   if ((raw.capture_warnings || []).length) errors.push(`Collector 경고가 ${(raw.capture_warnings || []).length}건 있습니다: ${(raw.capture_warnings || []).map((item) => item.code).join(", ")}`);
 
   const sensitivePaths = visitKeys(raw);
@@ -77,6 +80,8 @@ export function validateRaw(raw) {
     summary: {
       measurement_type: raw.measurement?.measurement_type || null,
       desired_chat_mode: raw.measurement?.desired_chat_mode || null,
+      account_plan: raw.environment?.account_plan || null,
+      model_selection: raw.environment?.model_selection || null,
       turns: turns.length,
       conversations: conversations.size,
       displayed_models: [...new Set(turns.map((turn) => turn.model_observation?.displayed_model).filter(Boolean))],
@@ -98,7 +103,7 @@ if (!inputs.length) {
       const result = validateRaw(raw);
       failed ||= result.errors.length > 0;
       console.log(`${result.errors.length ? "✗" : "✓"} ${basename(path)}`);
-      console.log(`  ${result.summary.measurement_type} · ${result.summary.desired_chat_mode} · turn ${result.summary.turns} · 대화 ${result.summary.conversations} · 모델 ${result.summary.displayed_models.join(", ") || "없음"} · 출처 ${result.summary.sources} · 보조 링크 제외 ${result.summary.excluded_auxiliary_links}`);
+      console.log(`  ${result.summary.measurement_type} · ${result.summary.desired_chat_mode} · 플랜 ${result.summary.account_plan || "없음"} · 선택 ${result.summary.model_selection || "없음"} · turn ${result.summary.turns} · 대화 ${result.summary.conversations} · 모델 ${result.summary.displayed_models.join(", ") || "없음"} · 출처 ${result.summary.sources} · 보조 링크 제외 ${result.summary.excluded_auxiliary_links}`);
       for (const error of result.errors) console.log(`  오류: ${error}`);
       for (const warning of result.warnings) console.log(`  참고: ${warning}`);
     } catch (error) {

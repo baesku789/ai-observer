@@ -1,6 +1,6 @@
 # 데이터 계약 초안
 
-상태: `0.7.0-draft / 질문별 요청 모델 관측 반영`
+상태: `0.8.0-draft / 계정 플랜·모델 선택 방식 반영`
 
 이 문서는 구현 방향을 맞추기 위한 가설 계약이다. ChatGPT 웹 탐사 결과에 따라 필드가 추가·삭제·변경될 수 있다.
 
@@ -42,7 +42,7 @@ UserInput
 
 ```json
 {
-  "schema_version": "0.7.0-draft",
+  "schema_version": "0.8.0-draft",
   "observation_id": "obs_example",
   "run_id": "run_example",
   "surface": "chatgpt_web",
@@ -61,6 +61,8 @@ UserInput
   },
   "environment": {
     "page_url": null,
+    "account_plan": "max",
+    "model_selection": "default",
     "requested_model": "gpt-5-6-instant",
     "displayed_model": "GPT-5.6 Sol",
     "model_detection_source": "network_request",
@@ -123,7 +125,7 @@ UserInput
   "capture_warnings": [],
   "collector": {
     "name": "chatgpt-web",
-    "version": "0.7.0"
+    "version": "0.8.0"
   }
 }
 ```
@@ -134,7 +136,9 @@ UserInput
 
 응답의 `citation_candidates`는 DOM 증거를 보존하므로 pill과 link가 함께 들어갈 수 있다. 정량 집계에는 정규 URL과 후보 ID를 묶은 `citation_groups`를 사용한다. 완료 후보는 페이지 전체가 아니라 응답별 `last_text_changed_at`, 텍스트 휴지 시간, 중지 버튼 표시 여부로 판정한다.
 
-질문별 모델은 측정 탭에서 발생한 ChatGPT 요청 본문의 `model`만 선별해 `model_observation`으로 연결한다. 요청 원문, 질문, 헤더, 토큰은 저장하지 않는다. `requested_model`은 요청 내부 코드이고 `displayed_model`은 사용자 화면 이름 매핑이다. 이는 사용자가 선택한 표면적 모델을 뜻하며 서버 내부의 최종 실행 모델을 증명하지 않는다. 네트워크 관측이 없으면 기존 DOM 모델 증거를 환경 단위 보조값으로 사용한다.
+`account_plan`과 `model_selection`은 측정 시작 전 사용자가 선언한다. 전자는 `free | plus | max | work | unknown`, 후자는 `default | manually_selected`다. `default`는 이번 측정에서 모델을 직접 선택하지 않았다는 뜻이며 모든 플랜에 같은 모델이 제공된다는 뜻이 아니다. 플랜과 선택 방식이 다른 결과는 별도 코호트로 비교한다.
+
+질문별 모델은 측정 탭에서 발생한 ChatGPT 요청 본문의 `model`만 선별해 `model_observation`으로 연결한다. 요청 원문, 질문, 헤더, 토큰은 저장하지 않는다. `requested_model`은 요청 내부 코드이고 `displayed_model`은 사용자 화면 이름 매핑이다. 이는 사용자에게 표면적으로 제공된 요청 모델을 뜻하며 서버 내부의 최종 실행 모델을 증명하지 않는다. 네트워크 관측이 없으면 기존 DOM 모델 증거를 환경 단위 보조값으로 사용한다.
 
 Normalizer는 답변에 포함된 지도 UI의 Mapbox·OpenStreetMap 저작권 및 약관 링크를 실제 출처 집계에서 제외한다. 단, 동일 URL이 명시적 인용 그룹에 포함되어 있으면 인용을 우선해 보존한다. 제외한 링크는 삭제하지 않고 각 turn의 `excluded_link_candidates`에 규칙 ID와 함께 남긴다.
 
@@ -146,16 +150,24 @@ Normalizer는 답변에 포함된 지도 UI의 Mapbox·OpenStreetMap 저작권 �
 
 ```json
 {
-  "observation_id": "obs_example",
-  "normalizer_version": "0.0.1",
-  "conversation_turns": [
-    {
-      "turn_id": "turn_example",
-      "prompt_text": "마곡에서 피부과 추천해줘",
-      "answer_segments": [],
-      "sources": []
-    }
-  ],
+  "schema_version": "normalized-0.5.0",
+  "normalizer": {
+    "name": "chatgpt-web-normalizer",
+    "version": "0.5.0"
+  },
+  "provenance": {
+    "raw_schema_version": "0.8.0-draft",
+    "observation_id": "obs_example",
+    "run_id": "run_example"
+  },
+  "environment": {
+    "account_plan": "max",
+    "model_selection": "default",
+    "requested_model": "gpt-5-6-instant"
+  },
+  "conversations": [],
+  "turns": [],
+  "sources": [],
   "normalization_warnings": []
 }
 ```

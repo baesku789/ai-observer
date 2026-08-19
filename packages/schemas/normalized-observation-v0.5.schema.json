@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-observer.local/schemas/normalized-observation-v0.5.schema.json",
+  "title": "AI Observer Normalized Observation v0.5",
+  "type": "object",
+  "required": ["schema_version", "normalizer", "provenance", "measurement", "environment", "conversations", "turns", "sources", "source_summary", "normalization_warnings"],
+  "properties": {
+    "schema_version": { "const": "normalized-0.5.0" },
+    "normalizer": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": { "version": { "const": "0.5.0" } }
+    },
+    "measurement": { "type": "object", "required": ["measurement_type", "boundary_strategy", "query_set"] },
+    "environment": {
+      "type": "object",
+      "required": ["account_plan", "model_selection"],
+      "properties": {
+        "account_plan": { "enum": ["free", "plus", "max", "work", "unknown"] },
+        "model_selection": { "enum": ["default", "manually_selected", null] }
+      }
+    },
+    "conversations": { "type": "array" },
+    "turns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_refs", "excluded_link_candidates", "search_observation"],
+        "properties": {
+          "source_refs": { "type": "array" },
+          "excluded_link_candidates": { "type": "array" },
+          "search_observation": {
+            "type": "object",
+            "required": ["source_count", "excluded_auxiliary_link_count"]
+          }
+        }
+      }
+    },
+    "sources": { "type": "array" },
+    "normalization_warnings": { "type": "array" }
+  }
+}

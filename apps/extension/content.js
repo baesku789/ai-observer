@@ -1,10 +1,10 @@
 (() => {
-  const SCHEMA_VERSION = "0.7.0-draft";
-  const COLLECTOR_VERSION = "0.7.0";
+  const SCHEMA_VERSION = "0.8.0-draft";
+  const COLLECTOR_VERSION = "0.8.0";
   const QUIET_PERIOD_MS = 1500;
   const MODEL_SIGNAL_BEFORE_PROMPT_MS = 120_000;
   const MODEL_SIGNAL_AFTER_PROMPT_MS = 10_000;
-  const state = { measuring: false, measurementType: "independent_query", querySet: null, queryRuns: [], activeRunIndex: null, desiredChatMode: "temporary", ownerTabId: null, revision: 0, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, modelSignals: [], observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
+  const state = { measuring: false, measurementType: "independent_query", querySet: null, queryRuns: [], activeRunIndex: null, desiredChatMode: "temporary", accountPlan: "unknown", modelSelection: "default", ownerTabId: null, revision: 0, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, modelSignals: [], observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
 
   const now = () => new Date().toISOString();
   const touch = () => { state.revision += 1; };
@@ -263,12 +263,14 @@
     clearTimeout(state.scanTimer); clearTimeout(state.quietTimer);
     state.scanTimer = setTimeout(scan, 250); state.quietTimer = setTimeout(scan, QUIET_PERIOD_MS + 50);
   }
-  function start(measurementType = "independent_query", querySet = null, queryRuns = [], desiredChatMode = "temporary", ownerTabId = null) {
+  function start(measurementType = "independent_query", querySet = null, queryRuns = [], desiredChatMode = "temporary", accountPlan = "unknown", modelSelection = "default", ownerTabId = null) {
     if (state.measuring) return status();
     if (!["independent_query", "conversation_journey"].includes(measurementType)) throw new Error("지원하지 않는 측정 유형입니다.");
     if (measurementType === "independent_query" && !queryRuns.length) throw new Error("측정할 질문을 한 개 이상 입력하세요.");
     if (!["temporary", "regular"].includes(desiredChatMode)) throw new Error("지원하지 않는 채팅 모드입니다.");
-    Object.assign(state, { measuring: true, measurementType, querySet, queryRuns, activeRunIndex: null, desiredChatMode, ownerTabId, revision: state.revision + 1, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, modelSignals: [] });
+    if (!["free", "plus", "max", "work", "unknown"].includes(accountPlan)) throw new Error("지원하지 않는 계정 플랜입니다.");
+    if (!["default", "manually_selected"].includes(modelSelection)) throw new Error("지원하지 않는 모델 선택 방식입니다.");
+    Object.assign(state, { measuring: true, measurementType, querySet, queryRuns, activeRunIndex: null, desiredChatMode, accountPlan, modelSelection, ownerTabId, revision: state.revision + 1, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, modelSignals: [] });
     state.records.clear(); openContext("measurement_started", true);
     if (measurementType === "conversation_journey") openConversation("measurement_started");
     state.observer = new MutationObserver(scheduleScan);
@@ -320,6 +322,8 @@
       owner_tab_id: state.ownerTabId,
       tab_scope: "single_tab",
       desired_chat_mode: state.desiredChatMode,
+      account_plan: state.accountPlan,
+      model_selection: state.modelSelection,
       chat_mode: state.currentContext?.chat_mode || null,
       active_run_index: state.activeRunIndex,
       next_run_index: nextRunIndex < state.queryRuns.length ? nextRunIndex : null,
@@ -376,7 +380,7 @@
         if (conversation.query?.prompt_match === "mismatch" && !state.warnings.some((warning) => warning.code === "query_prompt_mismatch" && warning.conversation_instance_id === conversation.conversation_instance_id)) state.warnings.push({ warning_id: makeId("warning"), code: "query_prompt_mismatch", message: "질문 세트의 예상 질문과 실제 질문이 다릅니다.", captured_at: capturedAt, conversation_instance_id: conversation.conversation_instance_id, query_id: conversation.query.query_id, expected_prompt: conversation.query.expected_prompt, observed_prompt: conversation.query.observed_prompt });
       }
     }
-    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, measurement: { measurement_type: state.measurementType, boundary_strategy: "user_confirmed_new_chat", tab_scope: "single_tab", desired_chat_mode: state.desiredChatMode, query_set: state.querySet }, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, requested_model: networkModel?.requested_model || null, displayed_model: networkModel?.displayed_model || model?.value || null, model_detection_source: networkModel ? "network_request" : model ? "dom" : null, displayed_model_evidence: networkModel || model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, conversation_instances: serializedConversations, conversation_events: state.conversationEvents, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: turns, capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
+    return { schema_version: SCHEMA_VERSION, observation_id: makeId("obs"), run_id: state.runId, surface: "chatgpt_web", captured_at: capturedAt, measurement_started_at: state.startedAt, measurement_ended_at: state.endedAt || capturedAt, measurement: { measurement_type: state.measurementType, boundary_strategy: "user_confirmed_new_chat", tab_scope: "single_tab", desired_chat_mode: state.desiredChatMode, query_set: state.querySet }, environment: { page_url: location.href, page_title: document.title, locale: document.documentElement.lang || navigator.language || null, account_plan: state.accountPlan, model_selection: state.modelSelection, requested_model: networkModel?.requested_model || null, displayed_model: networkModel?.displayed_model || model?.value || null, model_detection_source: networkModel ? "network_request" : model ? "dom" : null, displayed_model_evidence: networkModel || model, displayed_mode: mode?.value || null, displayed_mode_evidence: mode, ui_label_candidates: uiLabelCandidates() }, conversation_instances: serializedConversations, conversation_events: state.conversationEvents, chat_contexts: state.contexts.map(({ signature, ...context }) => context), context_events: state.contextEvents, turn_candidates: turns, capture_warnings: state.warnings, collector: { name: "chatgpt-web", version: COLLECTOR_VERSION } };
   }
 
   window.addEventListener("popstate", () => { if (state.measuring) setTimeout(scan, 100); });
@@ -385,7 +389,7 @@
     try {
       if (message?.type === "observer:network-model-signal") { receiveModelSignal(message); sendResponse({ ok: true }); }
       else if (message?.type === "observer:start") {
-        const data = start(message.measurement_type, message.query_set, message.query_runs, message.desired_chat_mode, message.owner_tab_id);
+        const data = start(message.measurement_type, message.query_set, message.query_runs, message.desired_chat_mode, message.account_plan, message.model_selection, message.owner_tab_id);
         chrome.runtime.sendMessage({ type: "observer:network-capture-start", run_id: state.runId }).then((response) => {
           if (!response?.ok) throw new Error(response?.error || "모델 수집기를 시작하지 못했습니다.");
           sendResponse({ ok: true, data });

@@ -1,9 +1,9 @@
 import { createQuerySetFromPrompts, expandQuerySet, querySetMetadata } from "./query-set.js";
 
-const COLLECTOR_VERSION = "0.7.0";
+const COLLECTOR_VERSION = "0.8.0";
 
 const elements = Object.fromEntries([
-  "start", "stop", "export", "measurement-type", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
+  "start", "stop", "export", "measurement-type", "account-plan", "model-selection", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
   "query-set-input", "load-query-set", "status-dot", "status-label", "status-detail", "message", "setup", "independent-settings",
   "workflow", "workflow-step", "workflow-title", "workflow-instruction", "workflow-query", "query-progress", "query-text", "copy-query",
   "confirm-new-chat", "mark-complete", "finish-measurement", "tab-warning", "return-to-tab", "results"
@@ -56,6 +56,15 @@ async function saveSession(session) {
 
 async function saveRunner() {
   if (runner) await chrome.storage.local.set({ queryRunner: runner });
+}
+
+async function saveMeasurementProfile() {
+  await chrome.storage.local.set({
+    measurementProfile: {
+      accountPlan: elements.accountPlan.value,
+      modelSelection: elements.modelSelection.value
+    }
+  });
 }
 
 function showMessage(message = "", success = false) {
@@ -198,8 +207,9 @@ function render(status, tabMismatch = false) {
   elements.statusDot.classList.toggle("active", active);
   elements.statusLabel.textContent = active ? "측정 중" : status?.run_id ? "측정 종료" : "측정 준비";
   const modelStatus = status?.current_displayed_model || status?.current_requested_model || "모델 대기";
+  const planStatus = status?.account_plan === "unknown" ? "플랜 미지정" : status?.account_plan?.toUpperCase();
   elements.statusDetail.textContent = active
-    ? `${status.question_count}/${status.total_runs || "-"} 질문 수집 · ${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"} · ${modelStatus}`
+    ? `${status.question_count}/${status.total_runs || "-"} 질문 수집 · ${status.chat_mode === "temporary" ? "임시 채팅" : status.chat_mode === "regular" ? "일반 채팅" : "모드 확인 중"} · ${planStatus} · ${modelStatus}`
     : status?.run_id ? `질문 ${status.question_count}개 · 답변 ${status.answer_count}개` : "질문을 입력하고 측정을 시작하세요.";
   elements.tabWarning.hidden = !tabMismatch;
   elements.setup.hidden = active;
@@ -240,6 +250,8 @@ elements.measurementType.addEventListener("change", () => {
   elements.independentSettings.hidden = elements.measurementType.value !== "independent_query";
 });
 elements.queryRepetitions.addEventListener("change", saveDraftRunner);
+elements.accountPlan.addEventListener("change", saveMeasurementProfile);
+elements.modelSelection.addEventListener("change", saveMeasurementProfile);
 
 elements.loadQuerySet.addEventListener("click", async () => {
   try {
@@ -272,6 +284,8 @@ elements.start.addEventListener("click", async () => {
       query_set: measurementType === "independent_query" ? querySetMetadata(runner.definition, runner.runs.length) : null,
       query_runs: measurementType === "independent_query" ? runner.runs : [],
       desired_chat_mode: elements.desiredChatMode.value,
+      account_plan: elements.accountPlan.value,
+      model_selection: elements.modelSelection.value,
       owner_tab_id: tab.id
     });
     await saveSession({ ownerTabId: tab.id, runId: status.run_id });
@@ -330,8 +344,12 @@ elements.export.addEventListener("click", async () => {
 });
 
 async function initialize() {
-  const [local, session] = await Promise.all([chrome.storage.local.get("queryRunner"), chrome.storage.session.get("measurementSession")]);
+  const [local, session] = await Promise.all([chrome.storage.local.get(["queryRunner", "measurementProfile"]), chrome.storage.session.get("measurementSession")]);
   measurementSession = session.measurementSession || null;
+  if (local.measurementProfile) {
+    elements.accountPlan.value = local.measurementProfile.accountPlan || "unknown";
+    elements.modelSelection.value = local.measurementProfile.modelSelection || "default";
+  }
   if (local.queryRunner) {
     try {
       runner = local.queryRunner;

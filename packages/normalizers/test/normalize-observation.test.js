@@ -28,7 +28,7 @@ const raw = {
 
 test("citation pill과 link를 하나의 출처로 정규화한다", () => {
   const result = normalizeObservation(raw);
-  assert.equal(result.schema_version, "normalized-0.4.0");
+  assert.equal(result.schema_version, "normalized-0.5.0");
   assert.equal(result.sources.length, 1);
   assert.equal(result.source_summary.total_unique_sources, 1);
   assert.equal(result.source_summary.total_citation_occurrences, 1);
@@ -134,6 +134,17 @@ test("Collector 0.7 네트워크 모델 관측값을 환경과 턴에 보존한�
   assert.equal(result.environment.model_detection_source, "network_request");
   assert.equal(result.turns[0].model_observation.displayed_model, "GPT-5.6 Sol");
   assert.deepEqual(result.conversations[0].requested_models, ["gpt-5-6"]);
+});
+
+test("Collector 0.8 계정 플랜과 모델 선택 방식을 보존한다", () => {
+  const modern = structuredClone(raw);
+  modern.schema_version = "0.8.0-draft";
+  modern.environment = { ...modern.environment, account_plan: "max", model_selection: "default", requested_model: "gpt-5-6-instant", displayed_model: "GPT-5.6 Sol", model_detection_source: "network_request" };
+  const result = normalizeObservation(modern);
+  assert.equal(result.normalizer.version, "0.5.0");
+  assert.equal(result.environment.account_plan, "max");
+  assert.equal(result.environment.model_selection, "default");
+  assert.equal(result.environment.requested_model, "gpt-5-6-instant");
 });
 
 test("지도 UI 보조 링크를 출처 집계에서 제외하되 표시 인용은 보존한다", () => {

@@ -15,7 +15,7 @@ function detectLanguage(text) {
 function validateRaw(raw) {
   const errors = [];
   if (!raw || typeof raw !== "object") errors.push("root must be an object");
-  if (!/^0\.(2|3|4|5|6|7)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
+  if (!/^0\.(2|3|4|5|6|7|8)\./.test(raw?.schema_version || "")) errors.push(`unsupported schema_version: ${raw?.schema_version ?? "missing"}`);
   if (!Array.isArray(raw?.turn_candidates)) errors.push("turn_candidates must be an array");
   if (errors.length) throw new Error(`Invalid raw observation: ${errors.join("; ")}`);
 }
@@ -74,7 +74,7 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
   for (const rawTurn of raw.turn_candidates) {
     const context = contextById.get(rawTurn.context_id);
     if (!context) warnings.push({ code: "missing_context", severity: "warning", turn_id: rawTurn.turn_id, context_id: rawTurn.context_id });
-    if (/^0\.(4|5|6|7)\./.test(raw.schema_version) && !conversationById.has(rawTurn.conversation_instance_id)) warnings.push({ code: "missing_conversation_instance", severity: "warning", turn_id: rawTurn.turn_id, conversation_instance_id: rawTurn.conversation_instance_id });
+    if (/^0\.(4|5|6|7|8)\./.test(raw.schema_version) && !conversationById.has(rawTurn.conversation_instance_id)) warnings.push({ code: "missing_conversation_instance", severity: "warning", turn_id: rawTurn.turn_id, conversation_instance_id: rawTurn.conversation_instance_id });
     if (!rawTurn.prompt) warnings.push({ code: "missing_prompt", severity: "warning", turn_id: rawTurn.turn_id });
     if ((rawTurn.response_candidates || []).length > 1) warnings.push({ code: "multiple_response_candidates", severity: "info", turn_id: rawTurn.turn_id, count: rawTurn.response_candidates.length });
     const sourceRefs = new Map();
@@ -141,11 +141,11 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
   const byOwner = [...byOwnerMap.values()].map((item) => ({ entity_id: item.entity_id, unique_page_count: item.source_ids.size, citation_count: item.citation_count, turn_count: item.turn_ids.size, page_types: item.page_types }));
 
   return {
-    schema_version: "normalized-0.4.0",
-    normalizer: { name: "chatgpt-web-normalizer", version: "0.4.0" },
+    schema_version: "normalized-0.5.0",
+    normalizer: { name: "chatgpt-web-normalizer", version: "0.5.0" },
     provenance: { raw_schema_version: raw.schema_version, observation_id: raw.observation_id, run_id: raw.run_id, source_captured_at: raw.captured_at },
     measurement: { measurement_type: measurementType, boundary_strategy: raw.measurement?.boundary_strategy || "legacy_inferred", tab_scope: raw.measurement?.tab_scope || null, desired_chat_mode: raw.measurement?.desired_chat_mode || null, query_set: raw.measurement?.query_set || null },
-    environment: { surface: raw.surface, chat_modes: [...new Set((raw.chat_contexts || []).map((context) => context.chat_mode))], requested_model: raw.environment?.requested_model ?? null, displayed_model: raw.environment?.displayed_model ?? null, model_detection_source: raw.environment?.model_detection_source ?? null, displayed_mode: raw.environment?.displayed_mode ?? null, locale: raw.environment?.locale ?? null },
+    environment: { surface: raw.surface, chat_modes: [...new Set((raw.chat_contexts || []).map((context) => context.chat_mode))], account_plan: raw.environment?.account_plan ?? "unknown", model_selection: raw.environment?.model_selection ?? null, requested_model: raw.environment?.requested_model ?? null, displayed_model: raw.environment?.displayed_model ?? null, model_detection_source: raw.environment?.model_detection_source ?? null, displayed_mode: raw.environment?.displayed_mode ?? null, locale: raw.environment?.locale ?? null },
     conversations,
     turns,
     sources,
