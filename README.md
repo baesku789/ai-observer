@@ -24,6 +24,7 @@ ChatGPT 등 AI 서비스에서 실제 사용자가 보는 답변을 관측하고
 
 - [아키텍처](docs/architecture.md)
 - [탐사 및 스키마 확정 계획](docs/discovery-plan.md)
+- [Collector v1 최종 실측](docs/collector-v1-validation.md)
 - [데이터 계약 초안](docs/data-contract-draft.md)
 - [ADR-0001: 브라우저 탐사 우선](docs/decisions/0001-browser-discovery-first.md)
 
@@ -91,6 +92,12 @@ node --check apps/extension/sidepanel.js
 node --check apps/extension/query-set.js
 python3 -m json.tool apps/extension/manifest.json >/dev/null
 npm test
+```
+
+수집한 raw JSON의 v1 후보 합격 조건은 다음 명령으로 확인한다.
+
+```bash
+npm run validate:collector -- /path/to/raw-observation.json
 ```
 
 ## Normalizer

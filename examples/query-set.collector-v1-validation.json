@@ -1,0 +1,30 @@
+{
+  "query_set_id": "collector-v1-validation-ko",
+  "version": "1.0.0",
+  "queries": [
+    {
+      "query_id": "local-recommendation",
+      "category": "recommendation",
+      "text": "마곡에서 피부과 추천해줘",
+      "repetitions": 1
+    },
+    {
+      "query_id": "named-clinic-facts",
+      "category": "entity_fact",
+      "text": "오가나셀피부과 마곡점의 의료진과 주요 진료 분야를 알려줘",
+      "repetitions": 1
+    },
+    {
+      "query_id": "local-comparison",
+      "category": "comparison",
+      "text": "마곡 피부과 중 여드름 치료를 기준으로 비교해줘",
+      "repetitions": 1
+    },
+    {
+      "query_id": "generic-selection-criteria",
+      "category": "general_advice",
+      "text": "피부과를 고를 때 확인해야 할 기준을 알려줘",
+      "repetitions": 1
+    }
+  ]
+}

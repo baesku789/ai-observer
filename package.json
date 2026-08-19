@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "normalize": "node packages/normalizers/cli.js",
+    "validate:collector": "node scripts/validate-collector-candidate.js",
     "test": "node --test apps/extension/*.test.js packages/normalizers/test/*.test.js",
-    "check": "node --check apps/extension/background.js && node --check apps/extension/model-signal.js && node --check apps/extension/content.js && node --check apps/extension/sidepanel.js && node --check apps/extension/query-set.js && node --check packages/normalizers/cli.js"
+    "check": "node --check apps/extension/background.js && node --check apps/extension/model-signal.js && node --check apps/extension/content.js && node --check apps/extension/sidepanel.js && node --check apps/extension/query-set.js && node --check packages/normalizers/cli.js && node --check scripts/validate-collector-candidate.js"
   }
 }
