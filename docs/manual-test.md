@@ -14,6 +14,8 @@ Chrome 웹 UI는 수시로 바뀔 수 있으므로 릴리스 전 아래 항목�
 - 내려받은 JSON의 `environment.account_plan`과 `environment.model_selection`이 화면에서 선택한 값과 일치한다.
 - 측정 시작 후 질문과 답변이 role별 후보로 저장된다.
 - 측정 중지 후 DOM 변경이 결과에 추가되지 않는다.
+- 측정 중인 ChatGPT 탭을 닫으면 이전 세션이 자동으로 정리되고, 다른 ChatGPT 탭에서 즉시 새 측정을 시작할 수 있다.
+- 측정 시작을 누르는 동안 주기적 상태 확인이 시작 결과나 오류 메시지를 덮어쓰지 않는다.
 - JSON 다운로드 이름에 시각이 포함된다.
 - 각 답변의 `last_text_changed_at`과 완료 판정 증거가 기록된다.
 - 완료된 답변 대부분이 `quiet_candidate`로 기록된다.

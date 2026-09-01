@@ -1,18 +1,21 @@
 import { createQuerySetFromPrompts, expandQuerySet, querySetMetadata } from "./query-set.js";
 
 const COLLECTOR_VERSION = "0.8.0";
+const PRIVACY_CONSENT_VERSION = "2026-09-01";
 
 const elements = Object.fromEntries([
   "start", "stop", "export", "measurement-type", "account-plan", "model-selection", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
   "query-set-input", "load-query-set", "status-dot", "status-label", "status-detail", "message", "setup", "independent-settings",
   "workflow", "workflow-step", "workflow-title", "workflow-instruction", "workflow-query", "query-progress", "query-text", "copy-query",
-  "confirm-new-chat", "mark-complete", "finish-measurement", "tab-warning", "return-to-tab", "results"
+  "confirm-new-chat", "mark-complete", "finish-measurement", "tab-warning", "return-to-tab", "results", "privacy-consent"
 ].map((id) => [id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), document.querySelector(`#${id}`)]));
 
 let runner = null;
 let runnerDirty = false;
 let measurementSession = null;
 let activeTabId = null;
+let refreshGeneration = 0;
+let actionInProgress = false;
 const buttonTimers = new WeakMap();
 
 async function activeChatGptTab() {
@@ -29,7 +32,8 @@ async function ownerTab() {
     if (!tab?.url?.startsWith("https://chatgpt.com/")) throw new Error();
     return tab;
   } catch (_) {
-    throw new Error("측정을 시작한 ChatGPT 탭이 닫혔습니다.");
+    await saveSession(null);
+    throw new Error("이전 측정 탭이 닫혀 세션을 정리했습니다. ChatGPT 탭에서 새 측정을 시작해 주세요.");
   }
 }
 
@@ -220,10 +224,13 @@ function render(status, tabMismatch = false) {
 }
 
 async function refresh() {
+  if (actionInProgress) return;
+  const generation = ++refreshGeneration;
   try {
     const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
     activeTabId = active?.id || null;
     const status = await request("observer:status");
+    if (generation !== refreshGeneration || actionInProgress) return;
     if (status.collector_version !== COLLECTOR_VERSION) throw new Error("익스텐션을 다시 로드한 뒤 ChatGPT 탭도 새로고침해 주세요.");
     if (measurementSession?.runId && status.run_id !== measurementSession.runId) {
       await saveSession(null);
@@ -231,6 +238,7 @@ async function refresh() {
     }
     render(status, Boolean(status.measuring && measurementSession?.ownerTabId && activeTabId !== measurementSession.ownerTabId));
   } catch (error) {
+    if (generation !== refreshGeneration || actionInProgress) return;
     elements.statusDot.classList.remove("active");
     elements.statusLabel.textContent = "ChatGPT 연결 필요";
     elements.statusDetail.textContent = error.message;
@@ -252,6 +260,11 @@ elements.measurementType.addEventListener("change", () => {
 elements.queryRepetitions.addEventListener("change", saveDraftRunner);
 elements.accountPlan.addEventListener("change", saveMeasurementProfile);
 elements.modelSelection.addEventListener("change", saveMeasurementProfile);
+elements.privacyConsent.addEventListener("change", async () => {
+  if (elements.privacyConsent.checked) {
+    await chrome.storage.local.set({ privacyConsent: { version: PRIVACY_CONSENT_VERSION, acceptedAt: new Date().toISOString() } });
+  } else await chrome.storage.local.remove("privacyConsent");
+});
 
 elements.loadQuerySet.addEventListener("click", async () => {
   try {
@@ -269,7 +282,11 @@ elements.loadQuerySet.addEventListener("click", async () => {
 });
 
 elements.start.addEventListener("click", async () => {
+  actionInProgress = true;
+  refreshGeneration += 1;
+  elements.start.disabled = true;
   try {
+    if (!elements.privacyConsent.checked) throw new Error("측정 데이터 안내를 확인하고 동의해 주세요.");
     const tab = await activeChatGptTab();
     const collectorStatus = await send(tab, "observer:status");
     if (collectorStatus.collector_version !== COLLECTOR_VERSION) throw new Error("익스텐션을 다시 로드한 뒤 ChatGPT 탭도 새로고침해 주세요.");
@@ -292,6 +309,11 @@ elements.start.addEventListener("click", async () => {
     render(status);
     showMessage("");
   } catch (error) { showMessage(error.message); }
+  finally {
+    actionInProgress = false;
+    elements.start.disabled = false;
+    await refresh();
+  }
 });
 
 elements.confirmNewChat.addEventListener("click", async () => {
@@ -317,10 +339,16 @@ elements.markComplete.addEventListener("click", async () => {
 });
 
 async function stopMeasurement() {
+  actionInProgress = true;
+  refreshGeneration += 1;
   try {
     render(await request("observer:stop"));
     showMessage("측정을 종료했습니다. 결과를 내려받을 수 있습니다.", true);
   } catch (error) { showMessage(error.message); }
+  finally {
+    actionInProgress = false;
+    await refresh();
+  }
 }
 elements.stop.addEventListener("click", stopMeasurement);
 elements.finishMeasurement.addEventListener("click", stopMeasurement);
@@ -344,8 +372,9 @@ elements.export.addEventListener("click", async () => {
 });
 
 async function initialize() {
-  const [local, session] = await Promise.all([chrome.storage.local.get(["queryRunner", "measurementProfile"]), chrome.storage.session.get("measurementSession")]);
+  const [local, session] = await Promise.all([chrome.storage.local.get(["queryRunner", "measurementProfile", "privacyConsent"]), chrome.storage.session.get("measurementSession")]);
   measurementSession = session.measurementSession || null;
+  elements.privacyConsent.checked = local.privacyConsent?.version === PRIVACY_CONSENT_VERSION;
   if (local.measurementProfile) {
     elements.accountPlan.value = local.measurementProfile.accountPlan || "unknown";
     elements.modelSelection.value = local.measurementProfile.modelSelection || "default";

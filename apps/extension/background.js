@@ -42,6 +42,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     delete sessions[tabId];
     return sessions;
   }).catch(() => {});
+  chrome.storage.session.get("measurementSession").then(({ measurementSession }) => {
+    if (measurementSession?.ownerTabId === tabId) return chrome.storage.session.remove("measurementSession");
+  }).catch(() => {});
 });
 
 chrome.webRequest.onBeforeRequest.addListener((details) => {
