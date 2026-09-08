@@ -245,7 +245,7 @@ function renderResultView(view) {
     : "";
   elements.resultSummary.replaceChildren(
     resultMetric("질문", view.summary.record_count),
-    resultMetric("답변", view.summary.answer_count),
+    resultMetric("검색어", view.summary.query_count),
     resultMetric("검색 결과", view.summary.search_result_count),
     resultMetric("인용 출처", view.summary.cited_source_count)
   );
@@ -265,13 +265,21 @@ function renderResultView(view) {
 
     const content = document.createElement("div");
     content.className = "record-content";
-    if (record.search.queries.length) {
+    if (record.search.searches.length) {
       const searchSection = document.createElement("section");
-      searchSection.innerHTML = `<h3>검색어 <span>${record.search.result_count}개 결과</span></h3>`;
+      searchSection.innerHTML = `<h3>검색 <span>${record.search.query_count}개 검색어 · 고유 결과 ${record.search.result_count}개</span></h3>`;
       const list = document.createElement("ul");
-      record.search.queries.forEach((value) => {
+      list.className = "search-list";
+      record.search.searches.forEach((search) => {
         const item = document.createElement("li");
-        item.textContent = value;
+        const query = document.createElement("span");
+        query.textContent = search.query;
+        item.append(query);
+        if (search.result_count !== null) {
+          const count = document.createElement("strong");
+          count.textContent = `${search.result_count}개 결과`;
+          item.append(count);
+        }
         list.append(item);
       });
       searchSection.append(list);

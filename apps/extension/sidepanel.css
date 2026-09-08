@@ -66,6 +66,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .record-content h3 { margin: 0 0 7px; font-size: 12px; }
 .record-content h3 span { color: #737a75; font-weight: 500; }
 .record-content ul, .citation-list { display: grid; gap: 6px; margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.45; }
+.search-list li { padding-left: 2px; }
+.search-list li > span { display: block; overflow-wrap: anywhere; }
+.search-list li > strong { display: block; margin-top: 2px; color: #41705a; font-size: 10px; }
 .result-answer { max-height: 260px; margin: 0; overflow: auto; color: #354039; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
 .citation-list li { padding-left: 2px; }
 .citation-list a { display: block; color: #245e45; font-weight: 700; overflow-wrap: anywhere; }

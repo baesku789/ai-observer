@@ -18,20 +18,31 @@ function canonicalUrl(value) {
 
 function searchFrom(events = []) {
   const queries = uniqueStrings(events.flatMap((event) => event.event_type === "search_queries" ? event.queries || [] : []));
+  const resultEvents = events.filter((event) => event.event_type === "search_results");
   const urls = new Set();
-  for (const event of events) {
-    if (event.event_type !== "search_results") continue;
+  const resultCounts = [];
+  for (const event of resultEvents) {
+    let resultCount = 0;
     for (const group of event.result_groups || []) {
       for (const entry of group.entries || []) {
+        resultCount += 1;
         const url = canonicalUrl(entry.url);
         if (url) urls.add(url);
       }
     }
+    resultCounts.push(resultCount);
   }
+  const countsMatchQueries = queries.length > 0 && queries.length === resultCounts.length;
   return {
     status: queries.length || urls.size || events.some((event) => event.event_type === "search_started") ? "observed" : "not_observed",
     queries,
-    result_count: urls.size
+    query_count: queries.length,
+    searches: queries.map((query, index) => ({
+      query,
+      result_count: countsMatchQueries ? resultCounts[index] : null
+    })),
+    result_count: urls.size,
+    result_count_by_query_available: countsMatchQueries
   };
 }
 
@@ -79,6 +90,7 @@ export function createExtensionObservationView(raw) {
     summary: {
       record_count: records.length,
       answer_count: records.filter((record) => record.answer).length,
+      query_count: records.reduce((sum, record) => sum + record.search.query_count, 0),
       search_result_count: records.reduce((sum, record) => sum + record.search.result_count, 0),
       cited_source_count: new Set(records.flatMap((record) => record.citations.map((citation) => citation.url))).size
     }
