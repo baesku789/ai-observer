@@ -7,6 +7,6 @@
     "structure": "node scripts/structure-observation.js",
     "validate:collector": "node scripts/validate-collector-candidate.js",
     "test": "node --test apps/extension/*.test.js packages/normalizers/test/*.test.js packages/structured-analysis/test/*.test.js",
-    "check": "node --check apps/extension/background.js && node --check apps/extension/model-signal.js && node --check apps/extension/stream-parser.js && node --check apps/extension/stream-interceptor.js && node --check apps/extension/content.js && node --check apps/extension/sidepanel.js && node --check apps/extension/query-set.js && node --check packages/normalizers/cli.js && node --check packages/structured-analysis/src/structure-observation.js && node --check scripts/structure-observation.js && node --check scripts/validate-collector-candidate.js"
+    "check": "node --check apps/extension/background.js && node --check apps/extension/model-signal.js && node --check apps/extension/stream-parser.js && node --check apps/extension/stream-interceptor.js && node --check apps/extension/content.js && node --check apps/extension/sidepanel.js && node --check apps/extension/query-set.js && node --check apps/extension/observation-view.js && node --check packages/normalizers/cli.js && node --check packages/structured-analysis/src/structure-observation.js && node --check scripts/structure-observation.js && node --check scripts/validate-collector-candidate.js"
   }
 }

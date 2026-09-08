@@ -1,13 +1,14 @@
 import { createQuerySetFromPrompts, expandQuerySet, querySetMetadata } from "./query-set.js";
+import { createExtensionObservationView } from "./observation-view.js";
 
 const COLLECTOR_VERSION = "0.8.0";
 const PRIVACY_CONSENT_VERSION = "2026-09-01";
 
 const elements = Object.fromEntries([
-  "start", "stop", "export", "measurement-type", "account-plan", "model-selection", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
+  "start", "stop", "export", "export-view", "measurement-type", "account-plan", "model-selection", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
   "query-set-input", "load-query-set", "status-dot", "status-label", "status-detail", "message", "setup", "independent-settings",
   "workflow", "workflow-step", "workflow-title", "workflow-instruction", "workflow-query", "query-progress", "query-text", "copy-query",
-  "confirm-new-chat", "mark-complete", "finish-measurement", "tab-warning", "return-to-tab", "results", "privacy-consent"
+  "confirm-new-chat", "mark-complete", "finish-measurement", "tab-warning", "return-to-tab", "results", "result-time", "result-summary", "result-records", "privacy-consent"
 ].map((id) => [id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), document.querySelector(`#${id}`)]));
 
 let runner = null;
@@ -16,6 +17,9 @@ let measurementSession = null;
 let activeTabId = null;
 let refreshGeneration = 0;
 let actionInProgress = false;
+let resultRunId = null;
+let resultObservation = null;
+let resultView = null;
 const buttonTimers = new WeakMap();
 
 async function activeChatGptTab() {
@@ -223,6 +227,103 @@ function render(status, tabMismatch = false) {
   if (active && !tabMismatch) renderWorkflow(status);
 }
 
+function resultMetric(label, value) {
+  const item = document.createElement("div");
+  item.className = "result-metric";
+  const count = document.createElement("strong");
+  count.textContent = String(value);
+  const name = document.createElement("span");
+  name.textContent = label;
+  item.append(count, name);
+  return item;
+}
+
+function renderResultView(view) {
+  const capturedAt = view.captured_at ? new Date(view.captured_at) : null;
+  elements.resultTime.textContent = capturedAt && !Number.isNaN(capturedAt.valueOf())
+    ? capturedAt.toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "";
+  elements.resultSummary.replaceChildren(
+    resultMetric("질문", view.summary.record_count),
+    resultMetric("답변", view.summary.answer_count),
+    resultMetric("검색 결과", view.summary.search_result_count),
+    resultMetric("인용 출처", view.summary.cited_source_count)
+  );
+  elements.resultRecords.replaceChildren();
+
+  view.records.forEach((record, index) => {
+    const details = document.createElement("details");
+    details.className = "result-record";
+    if (index === 0) details.open = true;
+    const summary = document.createElement("summary");
+    const number = document.createElement("span");
+    number.className = "record-number";
+    number.textContent = record.question.repetition ? `${index + 1} · ${record.question.repetition}회차` : String(index + 1);
+    const question = document.createElement("strong");
+    question.textContent = record.question.text || "질문을 찾지 못했습니다";
+    summary.append(number, question);
+
+    const content = document.createElement("div");
+    content.className = "record-content";
+    if (record.search.queries.length) {
+      const searchSection = document.createElement("section");
+      searchSection.innerHTML = `<h3>검색어 <span>${record.search.result_count}개 결과</span></h3>`;
+      const list = document.createElement("ul");
+      record.search.queries.forEach((value) => {
+        const item = document.createElement("li");
+        item.textContent = value;
+        list.append(item);
+      });
+      searchSection.append(list);
+      content.append(searchSection);
+    }
+
+    const answerSection = document.createElement("section");
+    answerSection.innerHTML = "<h3>답변</h3>";
+    const answer = document.createElement("p");
+    answer.className = "result-answer";
+    answer.textContent = record.answer?.text || "수집된 답변이 없습니다.";
+    answerSection.append(answer);
+    content.append(answerSection);
+
+    const citationSection = document.createElement("section");
+    citationSection.innerHTML = `<h3>인용 출처 <span>${record.citations.length}개</span></h3>`;
+    const citationList = document.createElement("ol");
+    citationList.className = "citation-list";
+    record.citations.forEach((citation) => {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = citation.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = citation.label || citation.domain;
+      const domain = document.createElement("span");
+      domain.textContent = citation.domain;
+      item.append(link, domain);
+      citationList.append(item);
+    });
+    if (!record.citations.length) {
+      const empty = document.createElement("p");
+      empty.className = "result-empty";
+      empty.textContent = "수집된 인용 출처가 없습니다.";
+      citationSection.append(empty);
+    } else citationSection.append(citationList);
+    content.append(citationSection);
+    details.append(summary, content);
+    elements.resultRecords.append(details);
+  });
+}
+
+async function loadResults(runId) {
+  if (!runId || resultRunId === runId) return;
+  const observation = await request("observer:export");
+  if (observation.run_id !== runId) return;
+  resultObservation = observation;
+  resultView = createExtensionObservationView(observation);
+  resultRunId = runId;
+  renderResultView(resultView);
+}
+
 async function refresh() {
   if (actionInProgress) return;
   const generation = ++refreshGeneration;
@@ -237,6 +338,7 @@ async function refresh() {
       throw new Error("측정 세션이 초기화되었습니다. 다시 시작해 주세요.");
     }
     render(status, Boolean(status.measuring && measurementSession?.ownerTabId && activeTabId !== measurementSession.ownerTabId));
+    if (!status.measuring && status.run_id) await loadResults(status.run_id);
   } catch (error) {
     if (generation !== refreshGeneration || actionInProgress) return;
     elements.statusDot.classList.remove("active");
@@ -361,13 +463,25 @@ elements.returnToTab.addEventListener("click", async () => {
 
 elements.export.addEventListener("click", async () => {
   try {
-    const observation = await request("observer:export");
+    const observation = resultObservation || await request("observer:export");
     const blob = new Blob([JSON.stringify(observation, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     await chrome.downloads.download({ url, filename: `ai-observer/raw-observation-${stamp}.json`, saveAs: true });
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
     showMessage("JSON 파일을 만들었습니다.", true);
+  } catch (error) { showMessage(error.message); }
+});
+
+elements.exportView.addEventListener("click", async () => {
+  try {
+    const view = resultView || createExtensionObservationView(await request("observer:export"));
+    const blob = new Blob([JSON.stringify(view, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    await chrome.downloads.download({ url, filename: `ai-observer/observation-view-${stamp}.json`, saveAs: true });
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    showMessage("결과 JSON 파일을 만들었습니다.", true);
   } catch (error) { showMessage(error.message); }
 });
 

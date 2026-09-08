@@ -109,7 +109,19 @@
       </section>
 
       <section id="results" class="results" hidden>
-        <button id="export" class="primary">JSON 내려받기</button>
+        <div class="section-heading results-heading">
+          <div>
+            <span class="eyebrow">측정 결과</span>
+            <h2>수집된 답변과 출처</h2>
+          </div>
+          <time id="result-time"></time>
+        </div>
+        <div id="result-summary" class="result-summary"></div>
+        <div id="result-records" class="result-records"></div>
+        <div class="result-actions">
+          <button id="export-view" class="primary">결과 JSON 내려받기</button>
+          <button id="export">원본 JSON 내려받기</button>
+        </div>
       </section>
 
       <button id="stop" class="quiet-action" hidden>측정 중지</button>
