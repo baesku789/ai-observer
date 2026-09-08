@@ -359,6 +359,8 @@
       answer_count: allRecords.filter((record) => record.role === "assistant").length,
       conversation_count: state.conversations.length,
       conversation_instance_id: conversationId,
+      current_context_id: state.currentContext?.context_id || null,
+      current_conversation_url: state.currentContext?.conversation_url || location.href,
       current_query: state.currentConversation?.query || null,
       current_conversation_prompt_count: promptCount,
       current_conversation_response_state: latestResponse?.completion_state || null,
@@ -369,7 +371,74 @@
       current_displayed_model: currentModel?.displayed_model || null,
       model_detection_source: currentModel ? "network_request" : null,
       warning_count: state.warnings.length
+      ,page_message_count: messageNodes().filter((node) => textOf(node)).length
     };
+  }
+
+  function clickableByText(patterns) {
+    return [...document.querySelectorAll("a, button")].find((node) => {
+      const label = `${textOf(node)} ${node.getAttribute("aria-label") || ""}`.trim().toLowerCase();
+      return patterns.some((pattern) => pattern.test(label));
+    }) || null;
+  }
+
+  function autoOpenNewChat() {
+    if (!state.measuring || state.measurementType !== "independent_query") throw new Error("독립 질문 측정 중이 아닙니다.");
+    if (status().phase !== "awaiting_new_chat") throw new Error("지금은 새 채팅을 열 단계가 아닙니다.");
+    const control = clickableByText([/(^|\s)새 채팅(\s|$)/i, /(^|\s)new chat(\s|$)/i, /(^|\s)新增聊天(\s|$)/i, /(^|\s)新聊天(\s|$)/i]);
+    if (!control) throw new Error("ChatGPT 새 채팅 버튼을 찾지 못했습니다.");
+    setTimeout(() => control.click(), 0);
+    return { clicked: true };
+  }
+
+  function autoSetChatMode(desiredMode) {
+    const current = chatModeEvidence().chat_mode;
+    if (current === desiredMode) return { changed: false, chat_mode: current };
+    const patterns = desiredMode === "temporary"
+      ? [/(^|\s)임시 채팅(\s|$)/i, /(^|\s)temporary chat(\s|$)/i, /(^|\s)暫時聊天(\s|$)/i, /(^|\s)临时聊天(\s|$)/i]
+      : [/임시 채팅 끄기/i, /turn off temporary chat/i, /disable temporary chat/i];
+    const control = clickableByText(patterns);
+    if (!control) throw new Error(`${desiredMode === "temporary" ? "임시" : "일반"} 채팅 전환 버튼을 찾지 못했습니다.`);
+    setTimeout(() => control.click(), 0);
+    return { changed: true, chat_mode: desiredMode };
+  }
+
+  function setComposerText(composer, value) {
+    composer.focus();
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+      const prototype = composer instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, "value").set.call(composer, value);
+    } else composer.textContent = value;
+    composer.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+  }
+
+  function composerText(composer) {
+    return (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement ? composer.value : composer.innerText || composer.textContent || "").trim();
+  }
+
+  function autoSubmitCurrent() {
+    const currentStatus = status();
+    if (currentStatus.phase !== "ready_to_send" || !currentStatus.active_query?.expected_prompt) throw new Error("현재 질문을 전송할 준비가 되지 않았습니다.");
+    const expectedPrompt = currentStatus.active_query.expected_prompt;
+    const composerSelector = "#prompt-textarea, textarea[data-id=root], [contenteditable=true][data-virtualkeyboard=true]";
+    const sendSelector = 'button[data-testid="send-button"], button[aria-label="Send message"], button[aria-label="메시지 보내기"], button[aria-label="프롬프트 보내기"]';
+    let attempts = 0;
+    const attemptSubmit = () => {
+      if (status().phase !== "ready_to_send" || attempts >= 25) return;
+      attempts += 1;
+      const composer = document.querySelector(composerSelector);
+      if (!composer) { setTimeout(attemptSubmit, 200); return; }
+      setComposerText(composer, expectedPrompt);
+      if (composerText(composer) !== expectedPrompt) { setTimeout(attemptSubmit, 200); return; }
+      setTimeout(() => {
+        if (status().phase !== "ready_to_send") return;
+        const send = document.querySelector(sendSelector);
+        if (send && !send.disabled) send.click();
+        else setTimeout(attemptSubmit, 200);
+      }, 250);
+    };
+    setTimeout(attemptSubmit, 0);
+    return { scheduled: true, query_id: currentStatus.active_query.query_id, repetition: currentStatus.active_query.repetition };
   }
   function buildTurns() {
     const turns = []; const currentByConversation = new Map();
@@ -434,6 +503,9 @@
       }
       else if (message?.type === "observer:confirm-new-chat" || message?.type === "observer:new-conversation") sendResponse({ ok: true, data: confirmNewChat() });
       else if (message?.type === "observer:mark-response-complete") sendResponse({ ok: true, data: markResponseComplete() });
+      else if (message?.type === "observer:auto-open-new-chat") sendResponse({ ok: true, data: autoOpenNewChat() });
+      else if (message?.type === "observer:auto-set-chat-mode") sendResponse({ ok: true, data: autoSetChatMode(message.desired_chat_mode) });
+      else if (message?.type === "observer:auto-submit-current") sendResponse({ ok: true, data: autoSubmitCurrent() });
       else if (message?.type === "observer:stop") {
         const data = stop();
         chrome.runtime.sendMessage({ type: "observer:network-capture-stop", run_id: state.runId }).then(() => sendResponse({ ok: true, data })).catch(() => sendResponse({ ok: true, data }));

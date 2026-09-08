@@ -36,6 +36,9 @@ p { line-height: 1.5; }
 .privacy-consent-label input { width: 16px; height: 16px; margin: 0; }
 .privacy-consent-label a { color: #245e45; }
 .start-button { margin-top: 14px; padding: 13px 14px; font-size: 15px; }
+.start-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.automation-controls { display: grid; gap: 8px; margin-top: 12px; padding: 12px; border: 1px solid #bfcfc6; border-radius: 12px; background: #f8fcf9; }
+.automation-controls strong { font-size: 12px; }
 .query-card { display: grid; gap: 9px; padding: 12px; border: 1px solid #cddfd5; border-radius: 10px; background: #f8fcf9; }
 .query-card strong { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
 .advanced-import { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e1ded5; }

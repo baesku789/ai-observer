@@ -99,7 +99,10 @@
           </label>
         </section>
 
-        <button id="start" class="primary start-button">측정 시작</button>
+        <div class="start-actions">
+          <button id="start" class="start-button">수동 측정 시작</button>
+          <button id="auto-start" class="primary start-button">자동 측정 시작</button>
+        </div>
 
         <details class="advanced-import">
           <summary>질문 JSON 가져오기</summary>
@@ -125,6 +128,10 @@
       </section>
 
       <button id="stop" class="quiet-action" hidden>측정 중지</button>
+      <section id="automation-controls" class="automation-controls" hidden>
+        <strong id="automation-status">자동 측정 실행 중</strong>
+        <button id="auto-pause">일시정지</button>
+      </section>
       <p id="message" class="message" role="alert"></p>
     </main>
     <script type="module" src="sidepanel.js"></script>

@@ -5,7 +5,7 @@ const COLLECTOR_VERSION = "0.8.0";
 const PRIVACY_CONSENT_VERSION = "2026-09-01";
 
 const elements = Object.fromEntries([
-  "start", "stop", "export", "export-view", "measurement-type", "account-plan", "model-selection", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
+  "start", "auto-start", "auto-pause", "automation-controls", "automation-status", "stop", "export", "export-view", "measurement-type", "account-plan", "model-selection", "desired-chat-mode", "query-repetitions", "query-list", "add-query",
   "query-set-input", "load-query-set", "status-dot", "status-label", "status-detail", "message", "setup", "independent-settings",
   "workflow", "workflow-step", "workflow-title", "workflow-instruction", "workflow-query", "query-progress", "query-text", "copy-query",
   "confirm-new-chat", "mark-complete", "finish-measurement", "tab-warning", "return-to-tab", "results", "result-time", "result-summary", "result-records", "privacy-consent"
@@ -20,6 +20,8 @@ let actionInProgress = false;
 let resultRunId = null;
 let resultObservation = null;
 let resultView = null;
+let automation = { enabled: false, paused: false, running: false, checkpointIndex: -1 };
+let measurementProgress = null;
 const buttonTimers = new WeakMap();
 
 async function activeChatGptTab() {
@@ -78,6 +80,123 @@ async function saveMeasurementProfile() {
 function showMessage(message = "", success = false) {
   elements.message.style.color = success ? "#2d6a4f" : "#a33a2b";
   elements.message.textContent = message;
+}
+
+function setAutomationStatus(message) {
+  elements.automationControls.hidden = !automation.enabled;
+  elements.automationStatus.textContent = message;
+  elements.autoPause.textContent = automation.paused ? "계속" : "일시정지";
+}
+
+async function saveCheckpoint(status) {
+  if (!Number.isInteger(status.active_run_index) || status.active_run_index <= automation.checkpointIndex) return;
+  const observation = await request("observer:export");
+  const conversation = observation.conversation_instances?.find((item) => item.run_index === status.active_run_index);
+  if (!conversation?.query || conversation.query.prompt_match !== "exact") throw new Error("현재 질문 원문이 일치하지 않아 자동 측정을 멈췄습니다.");
+  if (!conversation.manual_completion && status.current_conversation_complete !== true) throw new Error("답변 완료를 확인하지 못했습니다.");
+  if ((observation.capture_warnings || []).length) throw new Error(`Collector 경고가 있습니다: ${observation.capture_warnings.map((item) => item.code).join(", ")}`);
+  const blob = new Blob([JSON.stringify(observation, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const query = conversation.query;
+  const filename = `ai-observer/checkpoints/${observation.run_id}/${String(status.active_run_index + 1).padStart(3, "0")}-${query.query_id}-r${query.repetition}.json`;
+  await chrome.downloads.download({ url, filename, saveAs: false });
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  const runKey = `${query.query_id}::${query.repetition}`;
+  const completedRunKeys = new Set(measurementProgress?.query_set_id === query.query_set_id ? measurementProgress.completed_run_keys || [] : []);
+  completedRunKeys.add(runKey);
+  measurementProgress = { query_set_id: query.query_set_id, completed_run_keys: [...completedRunKeys], updated_at: new Date().toISOString() };
+  await chrome.storage.local.set({ measurementProgress });
+  automation.checkpointIndex = status.active_run_index;
+}
+
+async function downloadFinalResults() {
+  const observation = await request("observer:export");
+  const view = createExtensionObservationView(observation);
+  const files = [
+    [`ai-observer/${observation.run_id}/raw-observation.json`, observation],
+    [`ai-observer/${observation.run_id}/observation-view.json`, view]
+  ];
+  for (const [filename, value] of files) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    await chrome.downloads.download({ url, filename, saveAs: false });
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+}
+
+async function automationLoop() {
+  if (!automation.enabled || automation.paused || automation.running) return;
+  automation.running = true;
+  try {
+    while (automation.enabled && !automation.paused) {
+      const status = await request("observer:status");
+      setAutomationStatus(`자동 측정 · ${status.question_count}/${status.total_runs}`);
+      if (!status.measuring) throw new Error("측정 세션이 종료되어 자동 실행을 멈췄습니다.");
+      if (status.phase === "collecting_response") { await new Promise((resolve) => setTimeout(resolve, 1000)); continue; }
+      if (status.phase === "awaiting_chat_mode") {
+        await request("observer:auto-set-chat-mode", { desired_chat_mode: status.desired_chat_mode });
+        let changed = false;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          const next = await request("observer:status");
+          if (next.chat_mode === next.desired_chat_mode) { changed = true; break; }
+        }
+        if (!changed) throw new Error("요청한 채팅 모드로 전환되지 않았습니다.");
+        continue;
+      }
+      if (status.phase === "ready_to_send") {
+        await request("observer:auto-submit-current");
+        let submitted = false;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          const next = await request("observer:status");
+          if (next.phase !== "ready_to_send") { submitted = true; break; }
+        }
+        if (!submitted) throw new Error("질문 전송 상태를 확인하지 못했습니다.");
+        continue;
+      }
+      if (status.phase === "awaiting_new_chat") {
+        if (Number.isInteger(status.active_run_index)) await saveCheckpoint(status);
+        const previousContextId = status.current_context_id;
+        const previousUrl = status.current_conversation_url;
+        await request("observer:auto-open-new-chat");
+        let blank = false;
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          const next = await request("observer:status");
+          const contextChanged = next.current_context_id !== previousContextId || next.current_conversation_url !== previousUrl;
+          if (contextChanged && next.page_message_count === 0) { blank = true; break; }
+          if (attempt === 9 || attempt === 19) await request("observer:auto-open-new-chat");
+        }
+        if (!blank) throw new Error("새 채팅 화면 전환을 확인하지 못했습니다.");
+        let nextStatus = await request("observer:status");
+        if (nextStatus.chat_mode !== nextStatus.desired_chat_mode) {
+          await request("observer:auto-set-chat-mode", { desired_chat_mode: nextStatus.desired_chat_mode });
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            nextStatus = await request("observer:status");
+            if (nextStatus.chat_mode === nextStatus.desired_chat_mode) break;
+          }
+          if (nextStatus.chat_mode !== nextStatus.desired_chat_mode) throw new Error("요청한 채팅 모드로 전환되지 않았습니다.");
+        }
+        await request("observer:confirm-new-chat");
+        continue;
+      }
+      if (status.phase === "completed") {
+        await saveCheckpoint(status);
+        await stopMeasurement();
+        await downloadFinalResults();
+        automation.enabled = false;
+        setAutomationStatus("자동 측정 완료");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  } catch (error) {
+    automation.paused = true;
+    setAutomationStatus("자동 측정 일시정지");
+    showMessage(error.message);
+  } finally { automation.running = false; }
 }
 
 function flashButton(button, label, duration = 1400) {
@@ -225,6 +344,7 @@ function render(status, tabMismatch = false) {
   elements.stop.hidden = !active || tabMismatch;
   elements.results.hidden = !status?.run_id || active;
   if (active && !tabMismatch) renderWorkflow(status);
+  if (automation.enabled && active && !tabMismatch) automationLoop();
 }
 
 function resultMetric(label, value) {
@@ -427,7 +547,7 @@ elements.loadQuerySet.addEventListener("click", async () => {
   } catch (error) { showMessage(`JSON을 확인해 주세요: ${error.message}`); }
 });
 
-elements.start.addEventListener("click", async () => {
+async function startMeasurement(automatic = false) {
   actionInProgress = true;
   refreshGeneration += 1;
   elements.start.disabled = true;
@@ -442,24 +562,38 @@ elements.start.addEventListener("click", async () => {
       runnerDirty = false;
       await saveRunner();
     }
+    const completedRunKeys = new Set(measurementProgress?.query_set_id === runner?.definition?.query_set_id ? measurementProgress.completed_run_keys || [] : []);
+    const pendingRuns = measurementType === "independent_query"
+      ? runner.runs.filter((run) => !completedRunKeys.has(`${run.query_id}::${run.repetition}`))
+      : [];
+    if (measurementType === "independent_query" && !pendingRuns.length) throw new Error("이 질문 세트의 모든 측정이 이미 완료됐습니다.");
     const status = await send(tab, "observer:start", {
       measurement_type: measurementType,
       query_set: measurementType === "independent_query" ? querySetMetadata(runner.definition, runner.runs.length) : null,
-      query_runs: measurementType === "independent_query" ? runner.runs : [],
+      query_runs: pendingRuns,
       desired_chat_mode: elements.desiredChatMode.value,
       account_plan: elements.accountPlan.value,
       model_selection: elements.modelSelection.value,
       owner_tab_id: tab.id
     });
     await saveSession({ ownerTabId: tab.id, runId: status.run_id });
+    automation = { enabled: automatic, paused: false, running: false, checkpointIndex: -1 };
+    setAutomationStatus(automatic ? "자동 측정 시작" : "");
     render(status);
-    showMessage("");
+    showMessage(completedRunKeys.size ? `완료된 ${completedRunKeys.size}회를 건너뛰고 이어서 측정합니다.` : "", true);
   } catch (error) { showMessage(error.message); }
   finally {
     actionInProgress = false;
     elements.start.disabled = false;
     await refresh();
   }
+}
+elements.start.addEventListener("click", () => startMeasurement(false));
+elements.autoStart.addEventListener("click", () => startMeasurement(true));
+elements.autoPause.addEventListener("click", () => {
+  automation.paused = !automation.paused;
+  setAutomationStatus(automation.paused ? "자동 측정 일시정지" : "자동 측정 재개");
+  if (!automation.paused) automationLoop();
 });
 
 elements.confirmNewChat.addEventListener("click", async () => {
@@ -530,8 +664,9 @@ elements.exportView.addEventListener("click", async () => {
 });
 
 async function initialize() {
-  const [local, session] = await Promise.all([chrome.storage.local.get(["queryRunner", "measurementProfile", "privacyConsent"]), chrome.storage.session.get("measurementSession")]);
+  const [local, session] = await Promise.all([chrome.storage.local.get(["queryRunner", "measurementProfile", "privacyConsent", "measurementProgress"]), chrome.storage.session.get("measurementSession")]);
   measurementSession = session.measurementSession || null;
+  measurementProgress = local.measurementProgress || null;
   elements.privacyConsent.checked = local.privacyConsent?.version === PRIVACY_CONSENT_VERSION;
   if (local.measurementProfile) {
     elements.accountPlan.value = local.measurementProfile.accountPlan || "unknown";
