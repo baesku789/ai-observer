@@ -178,3 +178,40 @@ export function structureObservation(raw, options = {}) {
     }
   };
 }
+
+export function createObservationView(structured) {
+  if (!structured || typeof structured !== "object" || Array.isArray(structured)) {
+    throw new Error("structured observation must be an object");
+  }
+  if (!Array.isArray(structured.turns)) throw new Error("structured turns must be an array");
+
+  return {
+    schema_version: "observation-view-0.1.0",
+    measurement_id: structured.provenance?.observation_id || null,
+    captured_at: structured.provenance?.captured_at || null,
+    records: structured.turns.map((turn) => ({
+      question: {
+        id: turn.mapping?.query_id || null,
+        repetition: turn.mapping?.repetition ?? null,
+        text: turn.question?.observed_text || ""
+      },
+      search: {
+        status: turn.search?.status || "not_observed",
+        queries: turn.search?.rewritten_queries || [],
+        result_count: turn.search?.unique_result_count ?? 0
+      },
+      answer: turn.answer ? { text: turn.answer.observed_text || "" } : null,
+      citations: (turn.citations || []).map((citation) => ({
+        order: citation.citation_order,
+        label: citation.observed_labels?.[0] || citation.search_result?.title || null,
+        domain: citation.domain,
+        url: citation.canonical_url
+      }))
+    })),
+    summary: {
+      record_count: structured.turns.length,
+      cited_source_count: structured.summary?.final_cited_source_count
+        ?? new Set(structured.turns.flatMap((turn) => (turn.citations || []).map((citation) => citation.canonical_url))).size
+    }
+  };
+}

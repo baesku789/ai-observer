@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { structureObservation } from "../src/structure-observation.js";
+import { createObservationView, structureObservation } from "../src/structure-observation.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -155,6 +155,39 @@ test("동일 입력은 동일 결과를 만든다", () => {
   assert.deepEqual(structureObservation(fixture()), structureObservation(fixture()));
 });
 
+test("사용자용 View에는 분석에 필요한 핵심 정보만 노출한다", () => {
+  const view = createObservationView(structureObservation(fixture()));
+  const record = view.records[0];
+
+  assert.equal(view.schema_version, "observation-view-0.1.0");
+  assert.equal(view.measurement_id, "obs_test");
+  assert.deepEqual(record.question, {
+    id: "q_001",
+    repetition: 1,
+    text: "Find Potenza clinics in Seoul with English support"
+  });
+  assert.deepEqual(record.search.queries, ["Seoul Potenza English clinic"]);
+  assert.equal(record.search.result_count, 2);
+  assert.deepEqual(record.answer, { text: "Clinic Example offers Potenza and English support." });
+  assert.deepEqual(record.citations[0], {
+    order: 1,
+    label: "Clinic Example",
+    domain: "clinic.example",
+    url: "https://clinic.example/potenza"
+  });
+  assert.equal("mapping" in record, false);
+  assert.equal("search_result" in record.citations[0], false);
+});
+
+test("응답이 없는 레코드도 사용자용 View로 안전하게 변환한다", () => {
+  const raw = fixture();
+  raw.turn_candidates[0].response_candidates = [];
+  const record = createObservationView(structureObservation(raw)).records[0];
+
+  assert.equal(record.answer, null);
+  assert.deepEqual(record.citations, []);
+});
+
 test("CLI가 구조화 JSON 파일을 생성한다", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ai-observer-structured-"));
   const input = resolve("packages/structured-analysis/test/fixtures/basic.raw.json");
@@ -164,4 +197,24 @@ test("CLI가 구조화 JSON 파일을 생성한다", async () => {
   const result = JSON.parse(await readFile(output, "utf8"));
   assert.equal(result.schema_version, "structured-observation-0.1.0");
   assert.equal(result.turns[0].search.rewritten_queries[0], "Seoul Potenza English clinic");
+});
+
+test("CLI가 구조화 JSON과 사용자용 View를 함께 생성한다", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-observer-view-"));
+  const input = resolve("packages/structured-analysis/test/fixtures/basic.raw.json");
+  const output = join(directory, "structured.json");
+  const viewOutput = join(directory, "view.json");
+
+  await execFileAsync(process.execPath, [
+    "scripts/structure-observation.js",
+    input,
+    "--output",
+    output,
+    "--view-output",
+    viewOutput
+  ]);
+  const view = JSON.parse(await readFile(viewOutput, "utf8"));
+  assert.equal(view.schema_version, "observation-view-0.1.0");
+  assert.equal(view.records[0].question.id, null);
+  assert.equal(view.records[0].question.text, "Find a clinic");
 });

@@ -122,10 +122,13 @@ Normalizer는 추적 파라미터 제거, 안정적인 source ID 생성, 인용 
 
 ```bash
 npm run structure -- /path/to/raw-observation.json \
-  --output artifacts/structured-observation.json
+  --output artifacts/structured-observation.json \
+  --view-output artifacts/observation-view.json
 ```
 
 검색 결과 수는 스트림에 등장한 전체 항목 수(`observed_result_count`)와 추적 파라미터를 제거한 고유 URL 수(`unique_result_count`)를 모두 기록한다. 의미 분석이 필요하면 별도 규칙 또는 모델 단계의 결과를 `analysis`에 추가한다.
+
+`--view-output`은 원본 추적용 ID와 JSON 포인터를 감추고 질문, 검색어, 답변, 인용 출처만 담은 사용자·분석용 JSON을 함께 만든다. 여러 질문과 반복 측정은 `records[]`의 `question.id`와 `question.repetition`으로 구분한다.
 
 ## 예정 구조
 
