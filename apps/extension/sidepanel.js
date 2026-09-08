@@ -312,12 +312,14 @@ function renderResultView(view) {
       content.append(searchSection);
     }
 
-    const answerSection = document.createElement("section");
-    answerSection.innerHTML = "<h3>답변</h3>";
+    const answerSection = document.createElement("details");
+    answerSection.className = "answer-details";
+    const answerSummary = document.createElement("summary");
+    answerSummary.textContent = record.answer ? "답변 보기" : "답변 없음";
     const answer = document.createElement("p");
     answer.className = "result-answer";
     answer.textContent = record.answer?.text || "수집된 답변이 없습니다.";
-    answerSection.append(answer);
+    answerSection.append(answerSummary, answer);
     content.append(answerSection);
 
     const citationSection = document.createElement("section");

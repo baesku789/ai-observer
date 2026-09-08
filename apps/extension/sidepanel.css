@@ -77,6 +77,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .search-results li > span { display: block; color: #737a75; font-size: 10px; }
 .search-results p { margin: 3px 0 0; color: #646c67; font-size: 10px; line-height: 1.45; }
 .result-answer { max-height: 260px; margin: 0; overflow: auto; color: #354039; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+.answer-details > summary { width: max-content; color: #245e45; font-size: 12px; font-weight: 700; cursor: pointer; }
+.answer-details .result-answer { margin-top: 8px; }
 .citation-list li { padding-left: 2px; }
 .citation-list a { display: block; color: #245e45; font-weight: 700; overflow-wrap: anywhere; }
 .citation-list span { display: block; color: #737a75; font-size: 10px; }
