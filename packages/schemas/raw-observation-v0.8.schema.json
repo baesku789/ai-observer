@@ -34,7 +34,11 @@
       "items": {
         "type": "object",
         "properties": {
-          "model_observation": { "$ref": "#/$defs/modelObservation" }
+          "model_observation": { "$ref": "#/$defs/modelObservation" },
+          "search_events": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/searchEvent" }
+          }
         }
       }
     },
@@ -53,6 +57,22 @@
         "history_and_training_disabled": { "type": ["boolean", "null"] }
       },
       "required": ["requested_model", "displayed_model", "detection_source", "captured_at"]
+    },
+    "searchEvent": {
+      "type": "object",
+      "required": ["event_type", "signal_id", "stream_id", "captured_at", "source"],
+      "properties": {
+        "event_type": { "enum": ["search_started", "search_queries", "search_results", "search_tool", "search_capture_error"] },
+        "signal_id": { "type": "string" },
+        "stream_id": { "type": "string" },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "source": { "const": "network_stream" },
+        "queries": { "type": "array", "items": { "type": "string" } },
+        "result_groups": { "type": "array" },
+        "tool_name": { "type": ["string", "null"] },
+        "tool_invoked": { "type": "boolean" },
+        "error_code": { "type": "string" }
+      }
     }
   }
 }

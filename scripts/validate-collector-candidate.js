@@ -54,6 +54,11 @@ export function validateRaw(raw) {
     if (context?.chat_mode === "regular" && turn.model_observation?.history_and_training_disabled === null) warnings.push(`${label}: 일반채팅 네트워크 신호를 확인하지 못했습니다.`);
     if (conversation?.query && conversation.query.prompt_match !== "exact") errors.push(`${label}: 질문 일치 상태가 ${conversation.query.prompt_match || "missing"}입니다.`);
     if (!(turn.response_candidates || []).length) errors.push(`${label}: 답변이 없습니다.`);
+    for (const event of turn.search_events || []) {
+      if (event.source !== "network_stream") errors.push(`${label}: 검색 이벤트 출처가 network_stream이 아닙니다.`);
+      if (event.event_type === "search_queries" && !(event.queries || []).length) errors.push(`${label}: 검색어 이벤트에 검색어가 없습니다.`);
+      if (event.event_type === "search_results" && !(event.result_groups || []).length) errors.push(`${label}: 검색 결과 이벤트에 결과 그룹이 없습니다.`);
+    }
     const responseComplete = Boolean(conversation?.manual_completion) || (turn.response_candidates || []).some((response) => response.completion_state === "quiet_candidate");
     if (!responseComplete) errors.push(`${label}: 완료된 답변 후보가 없습니다.`);
 
@@ -86,7 +91,9 @@ export function validateRaw(raw) {
       conversations: conversations.size,
       displayed_models: [...new Set(turns.map((turn) => turn.model_observation?.displayed_model).filter(Boolean))],
       sources: normalized.sources.length,
-      excluded_auxiliary_links: normalized.turns.reduce((sum, turn) => sum + (turn.search_observation.excluded_auxiliary_link_count || 0), 0)
+      excluded_auxiliary_links: normalized.turns.reduce((sum, turn) => sum + (turn.search_observation.excluded_auxiliary_link_count || 0), 0),
+      search_queries: normalized.turns.reduce((sum, turn) => sum + (turn.search_observation.query_count || 0), 0),
+      search_results: normalized.turns.reduce((sum, turn) => sum + (turn.search_observation.result_count || 0), 0)
     }
   };
 }
@@ -103,7 +110,7 @@ if (!inputs.length) {
       const result = validateRaw(raw);
       failed ||= result.errors.length > 0;
       console.log(`${result.errors.length ? "✗" : "✓"} ${basename(path)}`);
-      console.log(`  ${result.summary.measurement_type} · ${result.summary.desired_chat_mode} · 플랜 ${result.summary.account_plan || "없음"} · 선택 ${result.summary.model_selection || "없음"} · turn ${result.summary.turns} · 대화 ${result.summary.conversations} · 모델 ${result.summary.displayed_models.join(", ") || "없음"} · 출처 ${result.summary.sources} · 보조 링크 제외 ${result.summary.excluded_auxiliary_links}`);
+      console.log(`  ${result.summary.measurement_type} · ${result.summary.desired_chat_mode} · 플랜 ${result.summary.account_plan || "없음"} · 선택 ${result.summary.model_selection || "없음"} · turn ${result.summary.turns} · 대화 ${result.summary.conversations} · 모델 ${result.summary.displayed_models.join(", ") || "없음"} · 출처 ${result.summary.sources} · 검색어 ${result.summary.search_queries} · 검색 결과 ${result.summary.search_results} · 보조 링크 제외 ${result.summary.excluded_auxiliary_links}`);
       for (const error of result.errors) console.log(`  오류: ${error}`);
       for (const warning of result.warnings) console.log(`  참고: ${warning}`);
     } catch (error) {

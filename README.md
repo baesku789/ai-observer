@@ -72,6 +72,7 @@ ChatGPT 등 AI 서비스에서 실제 사용자가 보는 답변을 관측하고
 - 같은 인용 UI의 pill과 링크를 `citation.group_id`로 묶음
 - 정량 집계 가능한 `citation_groups`와 정규 URL 출력
 - 네트워크 모델 감지 실패 시 모델·응답 모드의 선택자·라벨·HTML 증거와 UI 후보를 보조값으로 저장
+- 측정 중인 탭의 ChatGPT SSE 응답에서 검색어, 검색 결과 URL·제목·도메인, 검색 도구명만 화이트리스트로 선별해 턴별 `search_events`로 저장
 - 사용자가 확정한 새 채팅 경계를 `conversation_instance_id`로 기록
 - 측정을 시작한 탭을 소유 탭으로 고정하고 다른 탭에서 진행하지 못하도록 안내
 - `awaiting_new_chat → awaiting_chat_mode → ready_to_send → collecting_response → completed` 단계로 UI 상태 관리
@@ -80,6 +81,8 @@ ChatGPT 등 AI 서비스에서 실제 사용자가 보는 답변을 관측하고
 `quiet_candidate`는 ChatGPT 내부 완료 상태가 아니라 답변 노드별 텍스트 휴지기와 중지 버튼 부재를 결합한 탐사용 추정값이다. 추천 여부, 출처의 의미적 적합성, 점수는 이 익스텐션에서 판정하지 않는다. 실제 인용 수는 `citation_candidates.length`가 아니라 `citation_groups.length`로 집계한다.
 
 `model_observation`은 사용자 화면에서 요청된 표면적 모델이다. Collector는 요청 전체를 보존하지 않고 `model`, 준비 상태, 임시채팅 여부만 즉시 선별한다. 서버 내부에서 실제로 실행된 모델을 의미하지 않는다.
+
+`search_events`는 ChatGPT가 브라우저에 명시적으로 전송한 검색 이벤트만 기록한다. 전체 SSE 원문, 대화 토큰, 인증 정보는 저장하지 않으며 서버가 검색어를 노출하지 않은 경우에는 검색어를 추론해서 채우지 않는다.
 
 `environment.account_plan`은 사용자가 선언한 계정 플랜이고 `environment.model_selection`은 이번 측정에서 모델을 직접 선택했는지 나타낸다. 같은 기본 모델 측정이라도 플랜이 다르면 별도 코호트로 취급한다.
 

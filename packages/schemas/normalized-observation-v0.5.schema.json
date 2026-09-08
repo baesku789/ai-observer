@@ -31,7 +31,7 @@
           "excluded_link_candidates": { "type": "array" },
           "search_observation": {
             "type": "object",
-            "required": ["source_count", "excluded_auxiliary_link_count"]
+            "required": ["source_count", "excluded_auxiliary_link_count", "query_count", "queries", "result_count", "result_candidates", "tool_names"]
           }
         }
       }

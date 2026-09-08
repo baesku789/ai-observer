@@ -4,7 +4,7 @@
   const QUIET_PERIOD_MS = 1500;
   const MODEL_SIGNAL_BEFORE_PROMPT_MS = 120_000;
   const MODEL_SIGNAL_AFTER_PROMPT_MS = 10_000;
-  const state = { measuring: false, measurementType: "independent_query", querySet: null, queryRuns: [], activeRunIndex: null, desiredChatMode: "temporary", accountPlan: "unknown", modelSelection: "default", ownerTabId: null, revision: 0, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, modelSignals: [], observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
+  const state = { measuring: false, measurementType: "independent_query", querySet: null, queryRuns: [], activeRunIndex: null, desiredChatMode: "temporary", accountPlan: "unknown", modelSelection: "default", ownerTabId: null, revision: 0, runId: null, startedAt: null, endedAt: null, baselineKeys: new Set(), records: new Map(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, modelSignals: [], searchSignals: [], observer: null, scanTimer: null, quietTimer: null, contextTimer: null };
 
   const now = () => new Date().toISOString();
   const touch = () => { state.revision += 1; };
@@ -54,6 +54,30 @@
   }
   function latestModelObservation() {
     return publicModelObservation(state.modelSignals.at(-1));
+  }
+  function receiveSearchSignal(message) {
+    const signal = message?.signal;
+    if (!state.measuring || message.run_id !== state.runId || signal?.source !== "network_stream" || !signal.signal_id || !signal.event_type) return;
+    if (state.searchSignals.some((item) => item.signal_id === signal.signal_id)) return;
+    state.searchSignals.push({
+      ...signal,
+      context_id: state.currentContext?.context_id || null,
+      conversation_instance_id: state.currentConversation?.conversation_instance_id || null,
+      run_index: state.activeRunIndex
+    });
+    if (state.searchSignals.length > 1000) state.searchSignals.splice(0, state.searchSignals.length - 1000);
+    if (signal.event_type === "search_capture_error") addWarning("search_stream_read_failed", "검색 응답 스트림을 끝까지 읽지 못했습니다.");
+    touch();
+  }
+
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    if (event.source !== window || message?.source !== "ai-observer-main" || message?.type !== "network-search-signal") return;
+    receiveSearchSignal(message);
+  });
+
+  function setStreamCaptureActive(active) {
+    window.postMessage({ source: "ai-observer-content", type: "capture-control", active, run_id: state.runId }, location.origin);
   }
 
   function messageNodes() {
@@ -270,8 +294,9 @@
     if (!["temporary", "regular"].includes(desiredChatMode)) throw new Error("지원하지 않는 채팅 모드입니다.");
     if (!["free", "plus", "max", "work", "unknown"].includes(accountPlan)) throw new Error("지원하지 않는 계정 플랜입니다.");
     if (!["default", "manually_selected"].includes(modelSelection)) throw new Error("지원하지 않는 모델 선택 방식입니다.");
-    Object.assign(state, { measuring: true, measurementType, querySet, queryRuns, activeRunIndex: null, desiredChatMode, accountPlan, modelSelection, ownerTabId, revision: state.revision + 1, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, modelSignals: [] });
+    Object.assign(state, { measuring: true, measurementType, querySet, queryRuns, activeRunIndex: null, desiredChatMode, accountPlan, modelSelection, ownerTabId, revision: state.revision + 1, runId: makeId("run"), startedAt: now(), endedAt: null, baselineKeys: new Set(), warnings: [], contexts: [], contextEvents: [], currentContext: null, conversations: [], conversationEvents: [], currentConversation: null, modelSignals: [], searchSignals: [] });
     state.records.clear(); openContext("measurement_started", true);
+    setStreamCaptureActive(true);
     if (measurementType === "conversation_journey") openConversation("measurement_started");
     state.observer = new MutationObserver(scheduleScan);
     state.observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["href", "aria-label", "data-testid", "data-citation"] });
@@ -281,7 +306,7 @@
   function stop() {
     scan(); state.measuring = false; state.endedAt = now(); if (state.currentContext) state.currentContext.last_seen_at = state.endedAt;
     if (state.currentConversation) state.currentConversation.ended_at = state.endedAt;
-    state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); clearInterval(state.contextTimer); state.contextTimer = null; touch(); return status();
+    setStreamCaptureActive(false); state.observer?.disconnect(); state.observer = null; clearTimeout(state.scanTimer); clearTimeout(state.quietTimer); clearInterval(state.contextTimer); state.contextTimer = null; touch(); return status();
   }
   function markResponseComplete() {
     if (!state.measuring || !state.currentConversation) throw new Error("완료로 표시할 답변이 없습니다.");
@@ -358,6 +383,18 @@
       } else if (current) current.response_candidates.push(candidate);
       else { current = { turn_id: makeId("turn"), context_id: candidate.context_id, conversation_instance_id: candidate.conversation_instance_id, turn_index: turns.filter((turn) => (turn.conversation_instance_id || turn.context_id) === groupingId).length + 1, first_seen_at: candidate.first_seen_at, model_observation: null, prompt: null, response_candidates: [candidate] }; turns.push(current); currentByConversation.set(groupingId, current); }
     }
+    for (const signal of state.searchSignals) {
+      const signalAt = Date.parse(signal.captured_at);
+      const conversationTurns = turns.filter((turn) => turn.conversation_instance_id === signal.conversation_instance_id);
+      const preceding = conversationTurns.filter((turn) => Date.parse(turn.first_seen_at) <= signalAt);
+      const nearbyFollowing = conversationTurns.find((turn) => Date.parse(turn.first_seen_at) - signalAt <= MODEL_SIGNAL_AFTER_PROMPT_MS);
+      const turn = preceding.at(-1) || nearbyFollowing;
+      if (!turn) continue;
+      if (!turn.search_events) turn.search_events = [];
+      const { context_id, conversation_instance_id, run_index, ...event } = signal;
+      turn.search_events.push(event);
+    }
+    for (const turn of turns) if (!turn.search_events) turn.search_events = [];
     return turns;
   }
   function observation() {

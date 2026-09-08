@@ -147,6 +147,23 @@ test("Collector 0.8 계정 플랜과 모델 선택 방식을 보존한다", () =
   assert.equal(result.environment.requested_model, "gpt-5-6-instant");
 });
 
+test("Collector 0.8 네트워크 검색어와 검색 결과 후보를 보존한다", () => {
+  const modern = structuredClone(raw);
+  modern.schema_version = "0.8.0-draft";
+  modern.turn_candidates[0].search_events = [
+    { event_type: "search_started", source: "network_stream" },
+    { event_type: "search_queries", source: "network_stream", queries: ["서울 포텐자 영어 피부과", "서울 포텐자 영어 피부과"] },
+    { event_type: "search_results", source: "network_stream", result_groups: [{ domain: "clinic.example", entries: [{ url: "https://clinic.example/potenza", title: "Potenza", snippet: "English support", attribution: null }] }] },
+    { event_type: "search_tool", source: "network_stream", tool_name: "SonicBrowserTool", tool_invoked: true }
+  ];
+  const result = normalizeObservation(modern);
+  assert.equal(result.turns[0].search_observation.evidence, "network_search_events");
+  assert.deepEqual(result.turns[0].search_observation.queries, ["서울 포텐자 영어 피부과"]);
+  assert.equal(result.turns[0].search_observation.result_count, 1);
+  assert.equal(result.turns[0].search_observation.result_candidates[0].domain, "clinic.example");
+  assert.deepEqual(result.turns[0].search_observation.tool_names, ["SonicBrowserTool"]);
+});
+
 test("지도 UI 보조 링크를 출처 집계에서 제외하되 표시 인용은 보존한다", () => {
   const modern = structuredClone(raw);
   const response = modern.turn_candidates[0].response_candidates[0];

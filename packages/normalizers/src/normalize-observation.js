@@ -109,7 +109,22 @@ export function normalizeObservation(raw, registry = defaultRegistry) {
       return { response_id: response.candidate_id, role: response.role, text: response.text, language: detectLanguage(response.text), completion_state: response.completion_state, first_seen_at: response.first_seen_at, last_updated_at: response.last_updated_at };
     });
     const refs = [...sourceRefs.values()].sort((a, b) => a.display_order - b.display_order);
-    turns.push({ turn_id: rawTurn.turn_id, context_id: rawTurn.context_id, conversation_instance_id: rawTurn.conversation_instance_id || null, turn_index: rawTurn.turn_index, chat_mode: context?.chat_mode || "unknown", model_observation: rawTurn.model_observation || null, question: rawTurn.prompt ? { text: rawTurn.prompt.text, language: detectLanguage(rawTurn.prompt.text) } : null, responses, search_observation: { status: refs.length ? "observed" : "not_observed", evidence: refs.length ? "displayed_citations_or_links" : "no_displayed_source", source_count: refs.length, excluded_auxiliary_link_count: excludedLinkCandidates.length }, source_refs: refs, excluded_link_candidates: excludedLinkCandidates });
+    const searchEvents = rawTurn.search_events || [];
+    const queries = [...new Set(searchEvents.flatMap((event) => event.event_type === "search_queries" ? event.queries || [] : []))];
+    const resultCandidates = [];
+    const resultUrls = new Set();
+    for (const event of searchEvents.filter((item) => item.event_type === "search_results")) {
+      for (const group of event.result_groups || []) {
+        for (const entry of group.entries || []) {
+          if (!entry.url || resultUrls.has(entry.url)) continue;
+          resultUrls.add(entry.url);
+          resultCandidates.push({ url: entry.url, title: entry.title || null, snippet: entry.snippet || null, attribution: entry.attribution || null, domain: group.domain || null });
+        }
+      }
+    }
+    const toolNames = [...new Set(searchEvents.filter((event) => event.event_type === "search_tool" && event.tool_name).map((event) => event.tool_name))];
+    const networkObserved = queries.length > 0 || resultCandidates.length > 0 || searchEvents.some((event) => event.event_type === "search_started");
+    turns.push({ turn_id: rawTurn.turn_id, context_id: rawTurn.context_id, conversation_instance_id: rawTurn.conversation_instance_id || null, turn_index: rawTurn.turn_index, chat_mode: context?.chat_mode || "unknown", model_observation: rawTurn.model_observation || null, question: rawTurn.prompt ? { text: rawTurn.prompt.text, language: detectLanguage(rawTurn.prompt.text) } : null, responses, search_observation: { status: networkObserved || refs.length ? "observed" : "not_observed", evidence: networkObserved ? "network_search_events" : refs.length ? "displayed_citations_or_links" : "no_displayed_source", source_count: refs.length, excluded_auxiliary_link_count: excludedLinkCandidates.length, query_count: queries.length, queries, result_count: resultCandidates.length, result_candidates: resultCandidates, tool_names: toolNames }, source_refs: refs, excluded_link_candidates: excludedLinkCandidates });
   }
 
   const measurementType = raw.measurement?.measurement_type || "legacy_unspecified";
