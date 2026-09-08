@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.8.0-draft",
+  "observation_id": "obs_cli_test",
+  "run_id": "run_cli_test",
+  "captured_at": "2026-09-08T01:00:00.000Z",
+  "collector": { "name": "chatgpt-web", "version": "0.8.0" },
+  "surface": "chatgpt_web",
+  "chat_contexts": [{ "context_id": "ctx_1", "chat_mode": "temporary" }],
+  "turn_candidates": [{
+    "turn_id": "turn_1",
+    "context_id": "ctx_1",
+    "turn_index": 1,
+    "prompt": { "text": "Find a clinic" },
+    "search_events": [{ "event_type": "search_queries", "queries": ["Seoul Potenza English clinic"] }],
+    "response_candidates": [{
+      "candidate_id": "response_1",
+      "role": "assistant",
+      "text": "One clinic.",
+      "citation_groups": [{ "group_id": "group_1", "canonical_url": "https://clinic.example/potenza", "text": "Clinic" }]
+    }]
+  }]
+}

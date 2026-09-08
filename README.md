@@ -116,6 +116,17 @@ npm run normalize -- /path/to/raw-observation.json \
 
 Normalizer는 추적 파라미터 제거, 안정적인 source ID 생성, 인용 그룹 중복 제거, 검증된 registry 기반 소유자 분류, URL 경로 기반 페이지 유형 분류와 병원별 인용 집계를 수행한다. 지도 카드의 Mapbox·OpenStreetMap 저작권/약관 링크는 실제 인용보다 우선하지 않는 UI 보조 링크로 분리하고, 제외 근거를 `excluded_link_candidates`에 보존한다.
 
+## Structured observation
+
+수집한 raw JSON에서 질문, 내부 검색어, 검색 결과 후보, 최종 답변과 인용 출처를 하나의 구조로 묶는다. 관측값만 기계적으로 변환하며 질문 조건이나 인용 이유는 추측하지 않는다.
+
+```bash
+npm run structure -- /path/to/raw-observation.json \
+  --output artifacts/structured-observation.json
+```
+
+검색 결과 수는 스트림에 등장한 전체 항목 수(`observed_result_count`)와 추적 파라미터를 제거한 고유 URL 수(`unique_result_count`)를 모두 기록한다. 의미 분석이 필요하면 별도 규칙 또는 모델 단계의 결과를 `analysis`에 추가한다.
+
 ## 예정 구조
 
 ```text
