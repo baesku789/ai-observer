@@ -266,26 +266,29 @@ function renderResultView(view) {
     const content = document.createElement("div");
     content.className = "record-content";
     if (record.search.searches.length) {
-      const searchSection = document.createElement("section");
-      searchSection.innerHTML = `<h3>검색 <span>${record.search.query_count}개 검색어 · 고유 결과 ${record.search.result_count}개</span></h3>`;
+      const searchSection = document.createElement("details");
+      searchSection.className = "search-section";
+      const searchSummary = document.createElement("summary");
+      searchSummary.textContent = `검색어 ${record.search.query_count}개 · 고유 결과 ${record.search.result_count}개`;
       const list = document.createElement("ul");
       list.className = "search-list";
       record.search.searches.forEach((search) => {
         const item = document.createElement("li");
+        const queryDetails = document.createElement("details");
+        queryDetails.className = "search-query";
         const query = document.createElement("span");
         query.textContent = search.query;
-        item.append(query);
+        const querySummary = document.createElement("summary");
+        querySummary.append(query);
         if (search.result_count !== null) {
           const count = document.createElement("strong");
           count.textContent = `${search.result_count}개 결과`;
-          item.append(count);
+          querySummary.append(count);
         }
+        queryDetails.append(querySummary);
         if (search.results?.length) {
-          const resultDetails = document.createElement("details");
-          resultDetails.className = "search-results";
-          const resultSummary = document.createElement("summary");
-          resultSummary.textContent = "검색 결과 보기";
           const resultList = document.createElement("ol");
+          resultList.className = "search-results";
           search.results.forEach((result) => {
             const resultItem = document.createElement("li");
             const link = document.createElement("a");
@@ -303,12 +306,17 @@ function renderResultView(view) {
             }
             resultList.append(resultItem);
           });
-          resultDetails.append(resultSummary, resultList);
-          item.append(resultDetails);
+          queryDetails.append(resultList);
+        } else {
+          const empty = document.createElement("p");
+          empty.className = "result-empty";
+          empty.textContent = "검색어별 결과 연결 정보가 없습니다.";
+          queryDetails.append(empty);
         }
+        item.append(queryDetails);
         list.append(item);
       });
-      searchSection.append(list);
+      searchSection.append(searchSummary, list);
       content.append(searchSection);
     }
 
