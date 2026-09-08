@@ -21,16 +21,27 @@ function searchFrom(events = []) {
   const resultEvents = events.filter((event) => event.event_type === "search_results");
   const urls = new Set();
   const resultCounts = [];
+  const resultsByEvent = [];
   for (const event of resultEvents) {
-    let resultCount = 0;
+    const results = [];
+    const eventUrls = new Set();
     for (const group of event.result_groups || []) {
       for (const entry of group.entries || []) {
-        resultCount += 1;
         const url = canonicalUrl(entry.url);
-        if (url) urls.add(url);
+        if (!url) continue;
+        urls.add(url);
+        if (eventUrls.has(url)) continue;
+        eventUrls.add(url);
+        results.push({
+          title: entry.title || null,
+          domain: new URL(url).hostname,
+          url,
+          snippet: entry.snippet || null
+        });
       }
     }
-    resultCounts.push(resultCount);
+    resultCounts.push(results.length);
+    resultsByEvent.push(results);
   }
   const countsMatchQueries = queries.length > 0 && queries.length === resultCounts.length;
   return {
@@ -39,7 +50,8 @@ function searchFrom(events = []) {
     query_count: queries.length,
     searches: queries.map((query, index) => ({
       query,
-      result_count: countsMatchQueries ? resultCounts[index] : null
+      result_count: countsMatchQueries ? resultCounts[index] : null,
+      results: countsMatchQueries ? resultsByEvent[index] : null
     })),
     result_count: urls.size,
     result_count_by_query_available: countsMatchQueries

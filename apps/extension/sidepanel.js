@@ -280,6 +280,32 @@ function renderResultView(view) {
           count.textContent = `${search.result_count}개 결과`;
           item.append(count);
         }
+        if (search.results?.length) {
+          const resultDetails = document.createElement("details");
+          resultDetails.className = "search-results";
+          const resultSummary = document.createElement("summary");
+          resultSummary.textContent = "검색 결과 보기";
+          const resultList = document.createElement("ol");
+          search.results.forEach((result) => {
+            const resultItem = document.createElement("li");
+            const link = document.createElement("a");
+            link.href = result.url;
+            link.target = "_blank";
+            link.rel = "noreferrer";
+            link.textContent = result.title || result.domain;
+            const domain = document.createElement("span");
+            domain.textContent = result.domain;
+            resultItem.append(link, domain);
+            if (result.snippet) {
+              const snippet = document.createElement("p");
+              snippet.textContent = result.snippet;
+              resultItem.append(snippet);
+            }
+            resultList.append(resultItem);
+          });
+          resultDetails.append(resultSummary, resultList);
+          item.append(resultDetails);
+        }
         list.append(item);
       });
       searchSection.append(list);
