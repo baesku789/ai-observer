@@ -1,0 +1,98 @@
+{
+  "$schema": "../packages/schemas/query-set-v0.1.schema.json",
+  "query_set_id": "clinicpick-tw-community-demand-v1",
+  "version": "1.0.0",
+  "created_at": "2026-09-09",
+  "measurement_purpose": "대만 사용자가 한국 POTENZA·황금미세침과 병원 선택에 관해 실제로 묻는 질문에서 ChatGPT가 제시하는 답변, 검색어, 커뮤니티 및 공식 출처 인용을 관측한다.",
+  "market": "TW",
+  "locale": "zh-TW",
+  "measurement_contract": {
+    "surface": "chatgpt_web",
+    "measurement_type": "independent_query",
+    "chat_mode": "temporary",
+    "runs_per_query": 2,
+    "total_queries": 12,
+    "total_runs": 24,
+    "operator_rules": [
+      "질문마다 새 임시 채팅을 사용한다.",
+      "모든 실행에서 같은 계정 플랜과 모델 선택 방식을 유지한다.",
+      "질문 문구를 실행 중 수정하지 않는다.",
+      "커뮤니티 경험담과 병원 공식 사실을 같은 근거 등급으로 합치지 않는다.",
+      "AI 답변은 수요·표현·출처 후보 관측치이며 ClinicPick 공개 사실로 자동 승격하지 않는다."
+    ]
+  },
+  "queries": [
+    {
+      "query_id": "tw-potenza-community-overview",
+      "category": "community_overview",
+      "text": "台灣網友最近在 Dcard 或 PTT 討論去韓國做 Potenza 黃金微針時，最常問哪些問題、最在意哪些事情？請整理公開討論中的共同主題，附上可直接開啟的原文連結與發文日期，並把個人經驗、診所廣告和官方資訊分開標示。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-potenza-terminology",
+      "category": "local_terminology",
+      "text": "台灣消費者說的「黃金微針」「微針電波」「無限電波」和 Potenza 是同一件事嗎？請根據近三年的 Dcard、PTT 公開討論整理實際用語與容易混淆的設備名稱，附原文連結，不要只引用診所宣傳。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-potenza-pain-anesthesia",
+      "category": "pain_and_anesthesia",
+      "text": "去韓國做 Potenza 黃金微針到底有多痛？敷麻時間、探頭、能量或搭配麗珠蘭／Juvelook 會不會影響痛感？請整理 Dcard、PTT 台灣網友的公開經驗，保留不同意見並附原文連結與日期。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-potenza-downtime-aftercare",
+      "category": "downtime_and_aftercare",
+      "text": "在韓國做完 Potenza 黃金微針後通常會紅、腫、出血、脫皮或乾癢幾天？隔天能不能化妝和繼續旅行？請整理近三年 Dcard、PTT 的公開術後經驗與問題，附原文連結，並把醫療建議和個人經驗分開。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-potenza-results-sessions",
+      "category": "results_and_sessions",
+      "text": "Potenza 黃金微針改善毛孔、痘疤和膚質通常多久看得出來，需要做幾次？請比較 Dcard、PTT 台灣網友去韓國施作後的公開心得，包括覺得有效、無感或踩雷的經驗，附原文連結與日期。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-potenza-combination-choice",
+      "category": "treatment_combination",
+      "text": "去韓國做 Potenza 時，單做黃金微針、搭配 Juvelook，或搭配麗珠蘭有什麼差別？台灣網友通常怎麼選？請整理 Dcard、PTT 的公開問題和實際經驗，說明探頭、藥劑、cc 數或施作方式不明時不要直接比較，並附原文連結。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-potenza-price-composition",
+      "category": "price_composition",
+      "text": "台灣旅客去首爾做 Potenza 黃金微針實際會付多少錢？請從近三年 Dcard、PTT 公開討論整理網友提到的價格，分開標示診所與分店、探頭、搭配藥劑、次數、含稅與退稅資訊；條件不同的價格不要直接排名，並附原文連結。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-korea-vs-taiwan-potenza",
+      "category": "market_comparison",
+      "text": "Potenza 黃金微針去韓國做真的比台灣便宜又有效嗎？請整理 Dcard、PTT 台灣網友對價格、能量、療程時間、效果、回診便利和旅費的公開比較，呈現支持與反對經驗並附原文連結。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-clinic-doctor-consultation",
+      "category": "provider_trust",
+      "text": "台灣旅客挑首爾醫美診所時，為什麼會在意是不是流水線、是否由醫師本人面診和施作？請整理近三年 Dcard、PTT 的公開討論，列出網友實際用來判斷的條件與原文連結，不要把人氣當成醫療品質。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-clinic-language-upselling",
+      "category": "service_experience",
+      "text": "台灣人去韓國醫美時，中文翻譯、諮詢師推銷、現場加購和事前報價常遇到哪些問題？請整理 Dcard、PTT 的公開經驗，區分診所、分店與發文日期，附原文連結並保留正反意見。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-clinic-vat-refund-payment",
+      "category": "payment_and_tax",
+      "text": "台灣旅客在韓國醫美結帳時，含稅價格、退稅、刷卡和現金價最容易踩到哪些坑？請整理近三年 Dcard、PTT 的公開問題與經驗，附原文連結；會隨時間改變的退稅規則請另用官方來源核對。",
+      "repetitions": 2
+    },
+    {
+      "query_id": "tw-community-review-authenticity",
+      "category": "source_trust",
+      "text": "Dcard、Threads 或 PTT 上的韓國醫美心得要怎麼判斷是一般消費者分享、業配或診所行銷？請根據近三年的公開討論整理台灣網友提到的判斷線索，提供代表性原文連結，無法確認作者身分時請明確標示未知。",
+      "repetitions": 2
+    }
+  ]
+}
