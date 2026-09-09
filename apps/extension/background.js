@@ -1,4 +1,5 @@
 import { modelSignalFromRequestBody } from "./model-signal.js";
+import { attachAutomation, detachAutomation, openNewChat, setChatMode, submitPrompt } from "./automation-controller.js";
 
 const CAPTURE_STORAGE_KEY = "networkCaptureSessions";
 let captureSessionsPromise = chrome.storage.session.get(CAPTURE_STORAGE_KEY).then((stored) => stored[CAPTURE_STORAGE_KEY] || {});
@@ -20,6 +21,19 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type?.startsWith("observer:cdp-") && Number.isInteger(message.tab_id)) {
+    const actions = {
+      "observer:cdp-attach": () => attachAutomation(message.tab_id),
+      "observer:cdp-detach": () => detachAutomation(message.tab_id),
+      "observer:cdp-open-new-chat": () => openNewChat(message.tab_id),
+      "observer:cdp-set-chat-mode": () => setChatMode(message.tab_id, message.desired_chat_mode),
+      "observer:cdp-submit-prompt": () => submitPrompt(message.tab_id, message.prompt)
+    };
+    const action = actions[message.type];
+    if (!action) { sendResponse({ ok: false, error: "알 수 없는 CDP 자동화 요청입니다." }); return false; }
+    action().then((data) => sendResponse({ ok: true, data })).catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+    return true;
+  }
   if (message?.type === "observer:network-capture-start" && sender.tab?.id) {
     updateCaptureSessions((sessions) => {
       sessions[sender.tab.id] = { run_id: message.run_id, started_at: new Date().toISOString() };

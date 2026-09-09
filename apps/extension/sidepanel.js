@@ -58,6 +58,13 @@ async function request(type, payload = {}) {
   return send(await ownerTab(), type, payload);
 }
 
+async function control(type, payload = {}) {
+  const tab = await ownerTab();
+  const response = await chrome.runtime.sendMessage({ type, tab_id: tab.id, ...payload });
+  if (!response?.ok) throw new Error(response?.error || "브라우저 자동화 요청에 실패했습니다.");
+  return response.data;
+}
+
 async function saveSession(session) {
   measurementSession = session;
   if (session) await chrome.storage.session.set({ measurementSession: session });
@@ -134,7 +141,7 @@ async function automationLoop() {
       if (!status.measuring) throw new Error("측정 세션이 종료되어 자동 실행을 멈췄습니다.");
       if (status.phase === "collecting_response") { await new Promise((resolve) => setTimeout(resolve, 1000)); continue; }
       if (status.phase === "awaiting_chat_mode") {
-        await request("observer:auto-set-chat-mode", { desired_chat_mode: status.desired_chat_mode });
+        await control("observer:cdp-set-chat-mode", { desired_chat_mode: status.desired_chat_mode });
         let changed = false;
         for (let attempt = 0; attempt < 20; attempt += 1) {
           await new Promise((resolve) => setTimeout(resolve, 300));
@@ -145,7 +152,7 @@ async function automationLoop() {
         continue;
       }
       if (status.phase === "ready_to_send") {
-        await request("observer:auto-submit-current");
+        await control("observer:cdp-submit-prompt", { prompt: status.active_query.expected_prompt });
         let submitted = false;
         for (let attempt = 0; attempt < 20; attempt += 1) {
           await new Promise((resolve) => setTimeout(resolve, 300));
@@ -159,19 +166,19 @@ async function automationLoop() {
         if (Number.isInteger(status.active_run_index)) await saveCheckpoint(status);
         const previousContextId = status.current_context_id;
         const previousUrl = status.current_conversation_url;
-        await request("observer:auto-open-new-chat");
+        await control("observer:cdp-open-new-chat");
         let blank = false;
         for (let attempt = 0; attempt < 30; attempt += 1) {
           await new Promise((resolve) => setTimeout(resolve, 300));
           const next = await request("observer:status");
           const contextChanged = next.current_context_id !== previousContextId || next.current_conversation_url !== previousUrl;
           if (contextChanged && next.page_message_count === 0) { blank = true; break; }
-          if (attempt === 9 || attempt === 19) await request("observer:auto-open-new-chat");
+          if (attempt === 9 || attempt === 19) await control("observer:cdp-open-new-chat");
         }
         if (!blank) throw new Error("새 채팅 화면 전환을 확인하지 못했습니다.");
         let nextStatus = await request("observer:status");
         if (nextStatus.chat_mode !== nextStatus.desired_chat_mode) {
-          await request("observer:auto-set-chat-mode", { desired_chat_mode: nextStatus.desired_chat_mode });
+          await control("observer:cdp-set-chat-mode", { desired_chat_mode: nextStatus.desired_chat_mode });
           for (let attempt = 0; attempt < 20; attempt += 1) {
             await new Promise((resolve) => setTimeout(resolve, 300));
             nextStatus = await request("observer:status");
@@ -567,6 +574,10 @@ async function startMeasurement(automatic = false) {
       ? runner.runs.filter((run) => !completedRunKeys.has(`${run.query_id}::${run.repetition}`))
       : [];
     if (measurementType === "independent_query" && !pendingRuns.length) throw new Error("이 질문 세트의 모든 측정이 이미 완료됐습니다.");
+    if (automatic) {
+      const attached = await chrome.runtime.sendMessage({ type: "observer:cdp-attach", tab_id: tab.id });
+      if (!attached?.ok) throw new Error(attached?.error || "브라우저 자동화 연결에 실패했습니다.");
+    }
     const status = await send(tab, "observer:start", {
       measurement_type: measurementType,
       query_set: measurementType === "independent_query" ? querySetMetadata(runner.definition, runner.runs.length) : null,
@@ -622,7 +633,9 @@ async function stopMeasurement() {
   actionInProgress = true;
   refreshGeneration += 1;
   try {
-    render(await request("observer:stop"));
+    const tab = await ownerTab();
+    render(await send(tab, "observer:stop"));
+    await chrome.runtime.sendMessage({ type: "observer:cdp-detach", tab_id: tab.id }).catch(() => {});
     showMessage("측정을 종료했습니다. 결과를 내려받을 수 있습니다.", true);
   } catch (error) { showMessage(error.message); }
   finally {

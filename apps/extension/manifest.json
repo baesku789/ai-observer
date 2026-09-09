@@ -5,7 +5,7 @@
   "version": "0.8.0",
   "homepage_url": "https://baesku789.github.io/ai-observer/",
   "minimum_chrome_version": "114",
-  "permissions": ["activeTab", "downloads", "sidePanel", "storage", "webRequest"],
+  "permissions": ["activeTab", "debugger", "downloads", "sidePanel", "storage", "webRequest"],
   "host_permissions": ["https://chatgpt.com/*"],
   "background": {
     "service_worker": "background.js",
